@@ -1,0 +1,31 @@
+# Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
+
+client_id = "83d8bbef5c1e5717eba7bb0fd1252451"
+name = "booking-app-google-sheet"
+application_url = "https://example.com/"
+embedded = true
+handle = "booking-app-google-sheet"
+
+[build]
+include_config_on_deploy = true
+
+[webhooks]
+api_version = "2025-07"
+
+  [[webhooks.subscriptions]]
+  topics = [ "app/uninstalled" ]
+  uri = "/webhooks/app/uninstalled"
+
+  [[webhooks.subscriptions]]
+  topics = [ "app/scopes_update" ]
+  uri = "/webhooks/app/scopes_update"
+
+[access_scopes]
+# Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
+scopes = "write_products,read_products,read_orders,write_orders"
+
+[auth]
+redirect_urls = [ "https://example.com/api/auth" ]
+
+[pos]
+embedded = false

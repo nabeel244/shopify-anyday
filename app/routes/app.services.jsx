@@ -1,25 +1,18 @@
-import { useState, useEffect } from "react";
-import { useFetcher } from "@remix-run/react";
 import { authenticate } from "../shopify.server";
 import {
   Page,
   Layout,
   Card,
-  DataTable,
-  Button,
   Text,
   BlockStack,
   InlineStack,
-  TextField,
-  Modal,
+  Button,
   Banner,
-  Spinner,
-  EmptyState,
-  FormLayout,
-  Badge,
-  Box
+  Box,
+  Divider
 } from "@shopify/polaris";
 import { TitleBar } from "@shopify/app-bridge-react";
+import { useNavigate } from "@remix-run/react";
 
 export const loader = async ({ request }) => {
   await authenticate.admin(request);
@@ -27,312 +20,75 @@ export const loader = async ({ request }) => {
 };
 
 export default function ServicesManagement() {
-  const fetcher = useFetcher();
-  const [services, setServices] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [showModal, setShowModal] = useState(false);
-  const [editingService, setEditingService] = useState(null);
-  const [formData, setFormData] = useState({
-    name: '',
-    description: '',
-    price: '',
-    duration: ''
-  });
-  const [errors, setErrors] = useState({});
-
-  useEffect(() => {
-    loadServices();
-  }, []);
-
-  const loadServices = async () => {
-    try {
-      setIsLoading(true);
-      const response = await fetch('/api/services');
-      const data = await response.json();
-      
-      if (data.error) {
-        console.error('Failed to load services:', data.error);
-      } else {
-        setServices(data.services || []);
-      }
-    } catch (error) {
-      console.error('Error loading services:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const validateForm = () => {
-    const newErrors = {};
-
-    if (!formData.name.trim()) newErrors.name = 'Service name is required';
-    if (!formData.price.trim()) newErrors.price = 'Price is required';
-    else if (isNaN(parseFloat(formData.price)) || parseFloat(formData.price) <= 0) {
-      newErrors.price = 'Price must be a positive number';
-    }
-    if (!formData.duration.trim()) newErrors.duration = 'Duration is required';
-    else if (isNaN(parseInt(formData.duration)) || parseInt(formData.duration) <= 0) {
-      newErrors.duration = 'Duration must be a positive number';
-    }
-
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  };
-
-  const handleSubmit = async () => {
-    if (!validateForm()) return;
-
-    try {
-      const response = await fetch('/api/services', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData)
-      });
-
-      const data = await response.json();
-      
-      if (data.error) {
-        console.error('Failed to save service:', data.error);
-      } else {
-        setServices(prev => [...prev, data.service]);
-        resetForm();
-        setShowModal(false);
-      }
-    } catch (error) {
-      console.error('Error saving service:', error);
-    }
-  };
-
-  const handleUpdate = async () => {
-    if (!validateForm()) return;
-
-    try {
-      const response = await fetch(`/api/services/${editingService.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData)
-      });
-
-      const data = await response.json();
-      
-      if (data.error) {
-        console.error('Failed to update service:', data.error);
-      } else {
-        setServices(prev => prev.map(service => 
-          service.id === editingService.id ? data.service : service
-        ));
-        resetForm();
-        setShowModal(false);
-        setEditingService(null);
-      }
-    } catch (error) {
-      console.error('Error updating service:', error);
-    }
-  };
-
-  const handleDelete = async (serviceId) => {
-    if (!confirm('Are you sure you want to delete this service?')) return;
-
-    try {
-      const response = await fetch(`/api/services/${serviceId}`, {
-        method: 'DELETE'
-      });
-
-      const data = await response.json();
-      
-      if (data.error) {
-        console.error('Failed to delete service:', data.error);
-      } else {
-        setServices(prev => prev.filter(service => service.id !== serviceId));
-      }
-    } catch (error) {
-      console.error('Error deleting service:', error);
-    }
-  };
-
-  const resetForm = () => {
-    setFormData({
-      name: '',
-      description: '',
-      price: '',
-      duration: ''
-    });
-    setErrors({});
-  };
-
-  const openEditModal = (service) => {
-    setEditingService(service);
-    setFormData({
-      name: service.name,
-      description: service.description || '',
-      price: service.price.toString(),
-      duration: service.duration.toString()
-    });
-    setShowModal(true);
-  };
-
-  const openCreateModal = () => {
-    setEditingService(null);
-    resetForm();
-    setShowModal(true);
-  };
-
-  const formatPrice = (price) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD'
-    }).format(price);
-  };
-
-  const tableRows = services.map(service => [
-    service.name,
-    service.description || '-',
-    formatPrice(service.price),
-    `${service.duration} minutes`,
-    <Badge status={service.isActive ? 'success' : 'critical'}>
-      {service.isActive ? 'Active' : 'Inactive'}
-    </Badge>,
-    <InlineStack gap="100">
-      <Button 
-        size="slim" 
-        onClick={() => openEditModal(service)}
-      >
-        Edit
-      </Button>
-      <Button 
-        size="slim" 
-        variant="critical"
-        onClick={() => handleDelete(service.id)}
-      >
-        Delete
-      </Button>
-    </InlineStack>
-  ]);
+  const navigate = useNavigate();
 
   return (
     <Page>
-      <TitleBar title="Services Management">
-        <button variant="primary" onClick={openCreateModal}>
-          Add Service
-        </button>
-      </TitleBar>
-      
+      <TitleBar title="Services Management" />
       <Layout>
         <Layout.Section>
           <Card>
-            <BlockStack gap="400">
-              <InlineStack align="space-between">
-                <Text variant="headingMd">Services</Text>
-                <Button onClick={loadServices} loading={isLoading}>
-                  Refresh
-                </Button>
-              </InlineStack>
-              
-              {isLoading ? (
-                <Box padding="800">
-                  <InlineStack align="center">
-                    <Spinner size="large" />
-                    <Text variant="bodyMd">Loading services...</Text>
+            <Box padding="400">
+              <BlockStack gap="400">
+                <InlineStack align="space-between">
+                  <Text variant="headingMd">Services Management</Text>
+                </InlineStack>
+                
+                <Banner status="info">
+                  <p>
+                    <strong>Services are now managed through Product Configuration!</strong><br/>
+                    Instead of creating separate services, you can now configure booking functionality 
+                    directly on your Shopify products. This provides better integration and easier management.
+                  </p>
+                </Banner>
+
+                <BlockStack gap="300">
+                  <Text variant="headingSm">How it works now:</Text>
+                  <ul style={{ margin: 0, paddingLeft: '20px' }}>
+                    <li><strong>Select Products:</strong> Choose which products have booking functionality</li>
+                    <li><strong>Configure Settings:</strong> Set time slots, availability, and duration for each product</li>
+                    <li><strong>Automatic Services:</strong> Services are created automatically from your product configurations</li>
+                    <li><strong>Better Integration:</strong> Booking forms appear directly on product pages</li>
+                  </ul>
+                </BlockStack>
+
+                <Divider />
+
+                <BlockStack gap="200">
+                  <Text variant="bodyMd">
+                    <strong>Ready to configure your products?</strong>
+                  </Text>
+                  
+                  <InlineStack gap="200">
+                    <Button 
+                      variant="primary" 
+                      onClick={() => navigate('/app/product-config')}
+                    >
+                      Go to Product Configuration
+                    </Button>
+                    
+                    <Button 
+                      onClick={() => navigate('/app/bookings')}
+                    >
+                      View Bookings
+                    </Button>
                   </InlineStack>
-                </Box>
-              ) : services.length === 0 ? (
-                <EmptyState
-                  heading="No services found"
-                  image="https://cdn.shopify.com/s/files/1/0262/4071/2726/files/emptystate-files.png"
-                >
-                  <p>Create your first service to start accepting bookings.</p>
-                  <Button variant="primary" onClick={openCreateModal}>
-                    Add Service
-                  </Button>
-                </EmptyState>
-              ) : (
-                <DataTable
-                  columnContentTypes={[
-                    'text',
-                    'text',
-                    'text',
-                    'text',
-                    'text',
-                    'text'
-                  ]}
-                  headings={[
-                    'Service Name',
-                    'Description',
-                    'Price',
-                    'Duration',
-                    'Status',
-                    'Actions'
-                  ]}
-                  rows={tableRows}
-                />
-              )}
-            </BlockStack>
+                </BlockStack>
+
+                <Divider />
+
+                <BlockStack gap="200">
+                  <Text variant="bodySm" color="subdued">
+                    <strong>Note:</strong> The old services system has been replaced with a more integrated approach. 
+                    All booking functionality is now managed through your Shopify products, providing better 
+                    customer experience and easier administration.
+                  </Text>
+                </BlockStack>
+              </BlockStack>
+            </Box>
           </Card>
         </Layout.Section>
       </Layout>
-      
-      <Modal
-        open={showModal}
-        onClose={() => setShowModal(false)}
-        title={editingService ? 'Edit Service' : 'Add New Service'}
-        large
-      >
-        <Modal.Section>
-          <FormLayout>
-            <TextField
-              label="Service Name"
-              value={formData.name}
-              onChange={(value) => setFormData(prev => ({ ...prev, name: value }))}
-              error={errors.name}
-              autoComplete="off"
-            />
-            
-            <TextField
-              label="Description"
-              value={formData.description}
-              onChange={(value) => setFormData(prev => ({ ...prev, description: value }))}
-              placeholder="Describe what this service includes..."
-              multiline={3}
-            />
-            
-            <FormLayout.Group>
-              <TextField
-                label="Price ($)"
-                type="number"
-                value={formData.price}
-                onChange={(value) => setFormData(prev => ({ ...prev, price: value }))}
-                error={errors.price}
-                prefix="$"
-                autoComplete="off"
-              />
-              
-              <TextField
-                label="Duration (minutes)"
-                type="number"
-                value={formData.duration}
-                onChange={(value) => setFormData(prev => ({ ...prev, duration: value }))}
-                error={errors.duration}
-                suffix="min"
-                autoComplete="off"
-              />
-            </FormLayout.Group>
-          </FormLayout>
-        </Modal.Section>
-        
-        <Modal.Section>
-          <InlineStack align="space-between">
-            <Button onClick={() => setShowModal(false)}>
-              Cancel
-            </Button>
-            <Button 
-              variant="primary" 
-              onClick={editingService ? handleUpdate : handleSubmit}
-            >
-              {editingService ? 'Update Service' : 'Create Service'}
-            </Button>
-          </InlineStack>
-        </Modal.Section>
-      </Modal>
     </Page>
   );
 }

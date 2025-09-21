@@ -24,6 +24,7 @@ export default function App() {
         </Link>
         <Link to="/app/bookings">Bookings</Link>
         <Link to="/app/services">Services</Link>
+        <Link to="/app/product-config">Product Config</Link>
         <Link to="/app/google-sheets-config">Google Sheets</Link>
         <Link to="/app/additional">Additional page</Link>
       </NavMenu>

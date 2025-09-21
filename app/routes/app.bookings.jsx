@@ -17,7 +17,9 @@ import {
   Banner,
   Spinner,
   EmptyState,
-  Box
+  Box,
+  Divider,
+  FormLayout
 } from "@shopify/polaris";
 import { TitleBar } from "@shopify/app-bridge-react";
 
@@ -35,334 +37,390 @@ export default function BookingsDashboard() {
   const [modalAction, setModalAction] = useState(null);
   const [filters, setFilters] = useState({
     status: '',
-    search: '',
-    dateRange: { start: null, end: null }
+    search: ''
   });
-  const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage] = useState(10);
+  const [statistics, setStatistics] = useState({
+    total: 0,
+    pending: 0,
+    confirmed: 0,
+    cancelled: 0,
+    completed: 0
+  });
 
   useEffect(() => {
     loadBookings();
-  }, [filters, currentPage]);
+  }, [filters]);
 
   const loadBookings = async () => {
     try {
       setIsLoading(true);
-      const params = new URLSearchParams();
-      if (filters.status) params.append('status', filters.status);
-      if (filters.search) params.append('search', filters.search);
-      if (filters.dateRange.start) params.append('startDate', filters.dateRange.start.toISOString());
-      if (filters.dateRange.end) params.append('endDate', filters.dateRange.end.toISOString());
-      params.append('page', currentPage);
-      params.append('limit', itemsPerPage);
-
-      const response = await fetch(`/api/bookings?${params}`);
+      const response = await fetch('/api/bookings');
       const data = await response.json();
       
       if (data.error) {
         console.error('Failed to load bookings:', data.error);
       } else {
         setBookings(data.bookings || []);
+        calculateStatistics(data.bookings || []);
       }
-    } catch (error) {
-      console.error('Error loading bookings:', error);
+    } catch (err) {
+      console.error('Error loading bookings:', err);
     } finally {
       setIsLoading(false);
     }
   };
 
+  const calculateStatistics = (bookingsData) => {
+    const stats = {
+      total: bookingsData.length,
+      pending: bookingsData.filter(b => b.status === 'PENDING').length,
+      confirmed: bookingsData.filter(b => b.status === 'CONFIRMED').length,
+      cancelled: bookingsData.filter(b => b.status === 'CANCELLED').length,
+      completed: bookingsData.filter(b => b.status === 'COMPLETED').length
+    };
+    setStatistics(stats);
+  };
+
   const handleStatusChange = async (bookingId, newStatus) => {
     try {
-      const response = await fetch(`/api/bookings/${bookingId}`, {
+      const response = await fetch('/api/bookings', {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: newStatus })
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          id: bookingId,
+          status: newStatus
+        })
       });
 
       const data = await response.json();
-      
-      if (data.success) {
-        setBookings(prev => prev.map(booking => 
-          booking.id === bookingId 
-            ? { ...booking, status: newStatus }
-            : booking
-        ));
-      } else {
+
+      if (data.error) {
         console.error('Failed to update booking status:', data.error);
-      }
-    } catch (error) {
-      console.error('Error updating booking status:', error);
-    }
-  };
-
-  const handleDeleteBooking = async (bookingId) => {
-    try {
-      const response = await fetch(`/api/bookings/${bookingId}`, {
-        method: 'DELETE'
-      });
-
-      const data = await response.json();
-      
-      if (data.success) {
-        setBookings(prev => prev.filter(booking => booking.id !== bookingId));
-        setShowModal(false);
       } else {
-        console.error('Failed to delete booking:', data.error);
+        loadBookings(); // Reload bookings
       }
-    } catch (error) {
-      console.error('Error deleting booking:', error);
+    } catch (err) {
+      console.error('Error updating booking status:', err);
     }
   };
 
-  const getStatusBadge = (status) => {
-    const statusMap = {
-      PENDING: { status: 'warning', children: 'Pending' },
-      CONFIRMED: { status: 'success', children: 'Confirmed' },
-      CANCELLED: { status: 'critical', children: 'Cancelled' },
-      COMPLETED: { status: 'info', children: 'Completed' }
-    };
-    
-    return <Badge {...statusMap[status]} />;
+  const handleViewBooking = (booking) => {
+    setSelectedBooking(booking);
+    setModalAction('view');
+    setShowModal(true);
+  };
+
+  const handleEditBooking = (booking) => {
+    setSelectedBooking(booking);
+    setModalAction('edit');
+    setShowModal(true);
   };
 
   const formatDate = (dateString) => {
-    return new Date(dateString).toLocaleDateString();
+    return new Date(dateString).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric'
+    });
   };
 
   const formatTime = (timeString) => {
     return timeString;
   };
 
+  const formatPrice = (price) => {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD'
+    }).format(price);
+  };
+
+  const getStatusBadge = (status) => {
+    const statusConfig = {
+      PENDING: { status: 'warning', text: 'Pending' },
+      CONFIRMED: { status: 'success', text: 'Confirmed' },
+      CANCELLED: { status: 'critical', text: 'Cancelled' },
+      COMPLETED: { status: 'info', text: 'Completed' }
+    };
+    
+    const config = statusConfig[status] || { status: 'info', text: status };
+    return <Badge status={config.status}>{config.text}</Badge>;
+  };
+
   const filteredBookings = bookings.filter(booking => {
     if (filters.status && booking.status !== filters.status) return false;
     if (filters.search) {
       const searchTerm = filters.search.toLowerCase();
-      const customerName = `${booking.user.firstName} ${booking.user.lastName}`.toLowerCase();
-      const serviceName = booking.service.name.toLowerCase();
-      const email = booking.user.email.toLowerCase();
-      
-      if (!customerName.includes(searchTerm) && 
-          !serviceName.includes(searchTerm) && 
-          !email.includes(searchTerm)) {
-        return false;
-      }
+      return (
+        booking.user.firstName.toLowerCase().includes(searchTerm) ||
+        booking.user.lastName.toLowerCase().includes(searchTerm) ||
+        booking.user.email.toLowerCase().includes(searchTerm) ||
+        (booking.service?.name || booking.productBookingConfig?.productTitle || '').toLowerCase().includes(searchTerm)
+      );
     }
     return true;
   });
 
-  const tableRows = filteredBookings.map(booking => [
-    `${booking.user.firstName} ${booking.user.lastName}`,
-    booking.user.email,
-    booking.user.phone,
-    booking.service.name,
-    `$${booking.totalPrice}`,
-    formatDate(booking.bookingDate),
-    `${booking.startTime} - ${booking.endTime}`,
-    getStatusBadge(booking.status),
-    <InlineStack gap="100">
-      <Button 
-        size="slim" 
-        onClick={() => {
-          setSelectedBooking(booking);
-          setModalAction('view');
-          setShowModal(true);
-        }}
-      >
-        View
-      </Button>
-      <Button 
-        size="slim" 
-        onClick={() => {
-          setSelectedBooking(booking);
-          setModalAction('edit');
-          setShowModal(true);
-        }}
-      >
-        Edit
-      </Button>
-    </InlineStack>
-  ]);
-
-  const statusOptions = [
-    { label: 'All Statuses', value: '' },
-    { label: 'Pending', value: 'PENDING' },
-    { label: 'Confirmed', value: 'CONFIRMED' },
-    { label: 'Cancelled', value: 'CANCELLED' },
-    { label: 'Completed', value: 'COMPLETED' }
-  ];
-
-  const renderModal = () => {
-    if (!selectedBooking) return null;
-
+  if (isLoading) {
     return (
-      <Modal
-        open={showModal}
-        onClose={() => setShowModal(false)}
-        title={modalAction === 'view' ? 'Booking Details' : 'Edit Booking'}
-        large
-      >
-        <Modal.Section>
-          <BlockStack gap="400">
-            {modalAction === 'view' ? (
-              <BlockStack gap="300">
-                <Text variant="headingMd">Customer Information</Text>
-                <Text variant="bodyMd"><strong>Name:</strong> {selectedBooking.user.firstName} {selectedBooking.user.lastName}</Text>
-                <Text variant="bodyMd"><strong>Email:</strong> {selectedBooking.user.email}</Text>
-                <Text variant="bodyMd"><strong>Phone:</strong> {selectedBooking.user.phone}</Text>
-                
-                <Divider />
-                
-                <Text variant="headingMd">Booking Details</Text>
-                <Text variant="bodyMd"><strong>Service:</strong> {selectedBooking.service.name}</Text>
-                <Text variant="bodyMd"><strong>Date:</strong> {formatDate(selectedBooking.bookingDate)}</Text>
-                <Text variant="bodyMd"><strong>Time:</strong> {selectedBooking.startTime} - {selectedBooking.endTime}</Text>
-                <Text variant="bodyMd"><strong>Price:</strong> ${selectedBooking.totalPrice}</Text>
-                <Text variant="bodyMd"><strong>Status:</strong> {getStatusBadge(selectedBooking.status)}</Text>
-                
-                {selectedBooking.specialRequests && (
-                  <>
-                    <Divider />
-                    <Text variant="headingMd">Special Requests</Text>
-                    <Text variant="bodyMd">{selectedBooking.specialRequests}</Text>
-                  </>
-                )}
-              </BlockStack>
-            ) : (
-              <BlockStack gap="300">
-                <Select
-                  label="Status"
-                  options={statusOptions.filter(opt => opt.value !== '')}
-                  value={selectedBooking.status}
-                  onChange={(value) => {
-                    setSelectedBooking(prev => ({ ...prev, status: value }));
-                  }}
-                />
-                
-                <TextField
-                  label="Notes"
-                  value={selectedBooking.specialRequests || ''}
-                  onChange={(value) => {
-                    setSelectedBooking(prev => ({ ...prev, specialRequests: value }));
-                  }}
-                  multiline={3}
-                />
-              </BlockStack>
-            )}
-            
-            <InlineStack align="space-between">
-              <Button onClick={() => setShowModal(false)}>
-                {modalAction === 'view' ? 'Close' : 'Cancel'}
-              </Button>
-              
-              {modalAction === 'edit' && (
-                <InlineStack gap="200">
-                  <Button 
-                    variant="primary"
-                    onClick={() => {
-                      handleStatusChange(selectedBooking.id, selectedBooking.status);
-                      setShowModal(false);
-                    }}
-                  >
-                    Save Changes
-                  </Button>
-                  <Button 
-                    variant="critical"
-                    onClick={() => {
-                      if (confirm('Are you sure you want to delete this booking?')) {
-                        handleDeleteBooking(selectedBooking.id);
-                      }
-                    }}
-                  >
-                    Delete
-                  </Button>
+      <Page>
+        <TitleBar title="Bookings Dashboard" />
+        <Layout>
+          <Layout.Section>
+            <Card>
+              <Box padding="400">
+                <InlineStack align="center">
+                  <Spinner size="small" />
+                  <Text variant="bodyMd">Loading bookings...</Text>
                 </InlineStack>
-              )}
-            </InlineStack>
-          </BlockStack>
-        </Modal.Section>
-      </Modal>
+              </Box>
+            </Card>
+          </Layout.Section>
+        </Layout>
+      </Page>
     );
-  };
+  }
 
   return (
     <Page>
-      <TitleBar title="Booking Management" />
-      
+      <TitleBar title="Bookings Dashboard" />
       <Layout>
+        {/* Statistics Cards */}
+        <Layout.Section>
+          <InlineStack gap="400">
+            <Card>
+              <Box padding="400">
+                <BlockStack gap="200">
+                  <Text variant="headingLg" color="success">{statistics.total}</Text>
+                  <Text variant="bodyMd" color="subdued">Total Bookings</Text>
+                </BlockStack>
+              </Box>
+            </Card>
+            
+            <Card>
+              <Box padding="400">
+                <BlockStack gap="200">
+                  <Text variant="headingLg" color="info">{statistics.confirmed}</Text>
+                  <Text variant="bodyMd" color="subdued">Confirmed</Text>
+                </BlockStack>
+              </Box>
+            </Card>
+            
+            <Card>
+              <Box padding="400">
+                <BlockStack gap="200">
+                  <Text variant="headingLg" color="warning">{statistics.pending}</Text>
+                  <Text variant="bodyMd" color="subdued">Pending</Text>
+                </BlockStack>
+              </Box>
+            </Card>
+            
+            <Card>
+              <Box padding="400">
+                <BlockStack gap="200">
+                  <Text variant="headingLg" color="critical">{statistics.cancelled}</Text>
+                  <Text variant="bodyMd" color="subdued">Cancelled</Text>
+                </BlockStack>
+              </Box>
+            </Card>
+            
+            <Card>
+              <Box padding="400">
+                <BlockStack gap="200">
+                  <Text variant="headingLg" color="info">{statistics.completed}</Text>
+                  <Text variant="bodyMd" color="subdued">Completed</Text>
+                </BlockStack>
+              </Box>
+            </Card>
+          </InlineStack>
+        </Layout.Section>
+
+        {/* Filters and Actions */}
         <Layout.Section>
           <Card>
-            <BlockStack gap="400">
-              <InlineStack align="space-between">
-                <Text variant="headingMd">All Bookings</Text>
-                <Button onClick={loadBookings} loading={isLoading}>
-                  Refresh
-                </Button>
-              </InlineStack>
-              
-              <InlineStack gap="300">
-                <TextField
-                  label="Search"
-                  value={filters.search}
-                  onChange={(value) => setFilters(prev => ({ ...prev, search: value }))}
-                  placeholder="Search by name, email, or service..."
-                  clearButton
-                />
+            <Box padding="400">
+              <BlockStack gap="400">
+                <InlineStack align="space-between">
+                  <Text variant="headingMd">All Bookings</Text>
+                  <Button onClick={loadBookings}>Refresh</Button>
+                </InlineStack>
                 
-                <Select
-                  label="Status"
-                  options={statusOptions}
-                  value={filters.status}
-                  onChange={(value) => setFilters(prev => ({ ...prev, status: value }))}
-                />
-              </InlineStack>
-              
-              {isLoading ? (
-                <Box padding="800">
-                  <InlineStack align="center">
-                    <Spinner size="large" />
-                    <Text variant="bodyMd">Loading bookings...</Text>
-                  </InlineStack>
-                </Box>
-              ) : filteredBookings.length === 0 ? (
+                <InlineStack gap="300">
+                  <div style={{ minWidth: '200px' }}>
+                    <Select
+                      label="Filter by Status"
+                      options={[
+                        { label: 'All Statuses', value: '' },
+                        { label: 'Pending', value: 'PENDING' },
+                        { label: 'Confirmed', value: 'CONFIRMED' },
+                        { label: 'Cancelled', value: 'CANCELLED' },
+                        { label: 'Completed', value: 'COMPLETED' }
+                      ]}
+                      value={filters.status}
+                      onChange={(value) => setFilters(prev => ({ ...prev, status: value }))}
+                    />
+                  </div>
+                  
+                  <div style={{ minWidth: '300px' }}>
+                    <TextField
+                      label="Search"
+                      value={filters.search}
+                      onChange={(value) => setFilters(prev => ({ ...prev, search: value }))}
+                      placeholder="Search by name, email, or service..."
+                    />
+                  </div>
+                </InlineStack>
+              </BlockStack>
+            </Box>
+          </Card>
+        </Layout.Section>
+
+        {/* Bookings Table */}
+        <Layout.Section>
+          <Card>
+            {filteredBookings.length === 0 ? (
+              <Box padding="400">
                 <EmptyState
                   heading="No bookings found"
                   image="https://cdn.shopify.com/s/files/1/0262/4071/2726/files/emptystate-files.png"
                 >
                   <p>No bookings match your current filters.</p>
                 </EmptyState>
-              ) : (
-                <DataTable
-                  columnContentTypes={[
-                    'text',
-                    'text', 
-                    'text',
-                    'text',
-                    'text',
-                    'text',
-                    'text',
-                    'text',
-                    'text'
-                  ]}
-                  headings={[
-                    'Customer',
-                    'Email',
-                    'Phone',
-                    'Service',
-                    'Price',
-                    'Date',
-                    'Time',
-                    'Status',
-                    'Actions'
-                  ]}
-                  rows={tableRows}
-                />
-              )}
-            </BlockStack>
+              </Box>
+            ) : (
+              <DataTable
+                columnContentTypes={['text', 'text', 'text', 'text', 'text', 'text', 'text', 'text']}
+                headings={['Customer', 'Service', 'Date', 'Time', 'Price', 'Status', 'Created', 'Actions']}
+                rows={filteredBookings.map(booking => [
+                  `${booking.user.firstName} ${booking.user.lastName}`,
+                  booking.service?.name || booking.productBookingConfig?.productTitle || 'Unknown',
+                  formatDate(booking.bookingDate),
+                  `${formatTime(booking.startTime)} - ${formatTime(booking.endTime)}`,
+                  formatPrice(booking.totalPrice),
+                  getStatusBadge(booking.status),
+                  formatDate(booking.createdAt),
+                  <InlineStack gap="100">
+                    <Button 
+                      size="slim" 
+                      onClick={() => handleViewBooking(booking)}
+                    >
+                      View
+                    </Button>
+                    <Button 
+                      size="slim" 
+                      onClick={() => handleEditBooking(booking)}
+                    >
+                      Edit
+                    </Button>
+                  </InlineStack>
+                ])}
+              />
+            )}
           </Card>
         </Layout.Section>
       </Layout>
-      
-      {renderModal()}
+
+      {/* Booking Details Modal */}
+      {showModal && selectedBooking && (
+        <Modal
+          open={showModal}
+          onClose={() => setShowModal(false)}
+          title={`Booking Details - ${selectedBooking.user.firstName} ${selectedBooking.user.lastName}`}
+          large
+        >
+          <Modal.Section>
+            <BlockStack gap="400">
+              <Banner status="info">
+                <p>
+                  Booking ID: <strong>{selectedBooking.id}</strong>
+                </p>
+              </Banner>
+
+              <FormLayout>
+                <FormLayout.Group>
+                  <TextField
+                    label="Customer Name"
+                    value={`${selectedBooking.user.firstName} ${selectedBooking.user.lastName}`}
+                    readOnly
+                  />
+                  
+                  <TextField
+                    label="Email"
+                    value={selectedBooking.user.email}
+                    readOnly
+                  />
+                </FormLayout.Group>
+
+                <FormLayout.Group>
+                  <TextField
+                    label="Phone"
+                    value={selectedBooking.user.phone}
+                    readOnly
+                  />
+                  
+                  <TextField
+                    label="Service"
+                    value={selectedBooking.service?.name || selectedBooking.productBookingConfig?.productTitle || 'Unknown'}
+                    readOnly
+                  />
+                </FormLayout.Group>
+
+                <FormLayout.Group>
+                  <TextField
+                    label="Booking Date"
+                    value={formatDate(selectedBooking.bookingDate)}
+                    readOnly
+                  />
+                  
+                  <TextField
+                    label="Time"
+                    value={`${formatTime(selectedBooking.startTime)} - ${formatTime(selectedBooking.endTime)}`}
+                    readOnly
+                  />
+                </FormLayout.Group>
+
+                <FormLayout.Group>
+                  <TextField
+                    label="Total Price"
+                    value={formatPrice(selectedBooking.totalPrice)}
+                    readOnly
+                  />
+                  
+                  <Select
+                    label="Status"
+                    options={[
+                      { label: 'Pending', value: 'PENDING' },
+                      { label: 'Confirmed', value: 'CONFIRMED' },
+                      { label: 'Cancelled', value: 'CANCELLED' },
+                      { label: 'Completed', value: 'COMPLETED' }
+                    ]}
+                    value={selectedBooking.status}
+                    onChange={(value) => {
+                      setSelectedBooking(prev => ({ ...prev, status: value }));
+                      handleStatusChange(selectedBooking.id, value);
+                    }}
+                  />
+                </FormLayout.Group>
+
+                <TextField
+                  label="Special Requests"
+                  value={selectedBooking.specialRequests || 'None'}
+                  readOnly
+                  multiline={3}
+                />
+              </FormLayout>
+
+              <InlineStack gap="200">
+                <Button onClick={() => setShowModal(false)}>
+                  Close
+                </Button>
+              </InlineStack>
+            </BlockStack>
+          </Modal.Section>
+        </Modal>
+      )}
     </Page>
   );
 }

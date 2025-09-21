@@ -18,7 +18,7 @@ import {
 } from '@shopify/polaris';
 import { format, addDays, isAfter, isBefore, startOfDay } from 'date-fns';
 
-const BookingForm = ({ productId, onClose, onSuccess }) => {
+const BookingForm = ({ productId, productTitle, productPrice, bookingConfig, onClose, onSuccess }) => {
   const fetcher = useFetcher();
   const [currentStep, setCurrentStep] = useState(1);
   const [formData, setFormData] = useState({
@@ -26,46 +26,42 @@ const BookingForm = ({ productId, onClose, onSuccess }) => {
     lastName: '',
     email: '',
     phone: '',
-    serviceId: '',
+    productId: productId || '',
+    productTitle: productTitle || '',
+    productPrice: productPrice || 0,
     bookingDate: new Date(),
     startTime: '',
     specialRequests: ''
   });
-  const [services, setServices] = useState([]);
   const [availableTimes, setAvailableTimes] = useState([]);
   const [errors, setErrors] = useState({});
   const [isLoading, setIsLoading] = useState(false);
 
-  // Load services on component mount
+  // Load available times when date is selected
   useEffect(() => {
-    loadServices();
-  }, []);
-
-  // Load available times when service and date are selected
-  useEffect(() => {
-    if (formData.serviceId && formData.bookingDate) {
+    if (formData.bookingDate) {
       loadAvailableTimes();
     }
-  }, [formData.serviceId, formData.bookingDate]);
-
-  const loadServices = async () => {
-    try {
-      const response = await fetch('/api/services');
-      const data = await response.json();
-      setServices(data.services || []);
-    } catch (error) {
-      console.error('Failed to load services:', error);
-    }
-  };
+  }, [formData.bookingDate]);
 
   const loadAvailableTimes = async () => {
     setIsLoading(true);
     try {
-      const response = await fetch(`/api/availability?serviceId=${formData.serviceId}&date=${formData.bookingDate.toISOString()}`);
-      const data = await response.json();
-      setAvailableTimes(data.availableTimes || []);
+      // Use configured time slots if available
+      if (bookingConfig && bookingConfig.timeSlots) {
+        const configuredSlots = bookingConfig.timeSlots.map(slot => ({
+          label: slot,
+          value: slot
+        }));
+        setAvailableTimes(configuredSlots);
+      } else {
+        // Fallback to generated time slots
+        setAvailableTimes(generateTimeSlots());
+      }
     } catch (error) {
       console.error('Failed to load available times:', error);
+      // Fallback to generated time slots
+      setAvailableTimes(generateTimeSlots());
     } finally {
       setIsLoading(false);
     }
@@ -83,7 +79,7 @@ const BookingForm = ({ productId, onClose, onSuccess }) => {
     }
 
     if (step === 2) {
-      if (!formData.serviceId) newErrors.serviceId = 'Please select a service';
+      // Service details are already provided, no validation needed
     }
 
     if (step === 3) {
@@ -114,14 +110,17 @@ const BookingForm = ({ productId, onClose, onSuccess }) => {
   const handleSubmit = async () => {
     if (!validateStep(3)) return;
 
-    const selectedService = services.find(s => s.id === formData.serviceId);
-    const endTime = calculateEndTime(formData.startTime, selectedService.duration);
+    // Calculate end time using configured duration
+    const duration = bookingConfig ? bookingConfig.duration : 480; // Default 8 hours
+    const endTime = calculateEndTime(formData.startTime, duration);
 
     const bookingData = {
       ...formData,
       endTime,
-      totalPrice: selectedService.price,
-      productId
+      totalPrice: formData.productPrice,
+      productId: formData.productId,
+      productTitle: formData.productTitle,
+      productBookingConfigId: bookingConfig ? bookingConfig.id : null
     };
 
     fetcher.submit(
@@ -157,7 +156,18 @@ const BookingForm = ({ productId, onClose, onSuccess }) => {
   };
 
   const isDateDisabled = (date) => {
-    return isBefore(date, startOfDay(new Date()));
+    const today = startOfDay(new Date());
+    
+    // Disable past dates
+    if (isBefore(date, today)) return true;
+    
+    // Disable configured disabled dates
+    if (bookingConfig && bookingConfig.disabledDates) {
+      const dateString = date.toISOString().split('T')[0];
+      if (bookingConfig.disabledDates.includes(dateString)) return true;
+    }
+    
+    return false;
   };
 
   const renderStep1 = () => (
@@ -205,42 +215,19 @@ const BookingForm = ({ productId, onClose, onSuccess }) => {
 
   const renderStep2 = () => (
     <BlockStack gap="400">
-      <Text variant="headingMd">Select Service</Text>
-      <FormLayout>
-        <Select
-          label="Choose a Service"
-          options={[
-            { label: 'Select a service...', value: '' },
-            ...services.map(service => ({
-              label: `${service.name} - $${service.price} (${service.duration} min)`,
-              value: service.id
-            }))
-          ]}
-          value={formData.serviceId}
-          onChange={(value) => handleInputChange('serviceId', value)}
-          error={errors.serviceId}
-        />
-        
-        {formData.serviceId && (
-          <Box padding="400" background="bg-surface-secondary" borderRadius="200">
-            <BlockStack gap="200">
-              <Text variant="headingSm">Service Details</Text>
-              {(() => {
-                const selectedService = services.find(s => s.id === formData.serviceId);
-                return (
-                  <>
-                    <Text variant="bodyMd"><strong>Duration:</strong> {selectedService.duration} minutes</Text>
-                    <Text variant="bodyMd"><strong>Price:</strong> ${selectedService.price}</Text>
-                    {selectedService.description && (
-                      <Text variant="bodyMd"><strong>Description:</strong> {selectedService.description}</Text>
-                    )}
-                  </>
-                );
-              })()}
-            </BlockStack>
-          </Box>
-        )}
-      </FormLayout>
+      <Text variant="headingMd">Service Details</Text>
+      <Card>
+        <Box padding="300">
+          <BlockStack gap="200">
+            <Text variant="headingSm">{formData.productTitle}</Text>
+            <Text variant="bodyMd">Birthday party center service</Text>
+            <InlineStack gap="200">
+              <Badge status="info">${formData.productPrice}</Badge>
+              <Badge status="info">Full day service</Badge>
+            </InlineStack>
+          </BlockStack>
+        </Box>
+      </Card>
     </BlockStack>
   );
 
@@ -286,8 +273,8 @@ const BookingForm = ({ productId, onClose, onSuccess }) => {
   );
 
   const renderStep4 = () => {
-    const selectedService = services.find(s => s.id === formData.serviceId);
-    const endTime = calculateEndTime(formData.startTime, selectedService.duration);
+    const duration = bookingConfig ? bookingConfig.duration : 480; // Default 8 hours
+    const endTime = calculateEndTime(formData.startTime, duration);
 
     return (
       <BlockStack gap="400">
@@ -318,7 +305,7 @@ const BookingForm = ({ productId, onClose, onSuccess }) => {
             
             <InlineStack align="space-between">
               <Text variant="bodyMd"><strong>Service:</strong></Text>
-              <Text variant="bodyMd">{selectedService.name}</Text>
+              <Text variant="bodyMd">{formData.productTitle}</Text>
             </InlineStack>
             
             <InlineStack align="space-between">

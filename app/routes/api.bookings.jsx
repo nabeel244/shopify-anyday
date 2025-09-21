@@ -15,7 +15,7 @@ export async function action({ request }) {
     const data = JSON.parse(bookingData);
 
     // Validate required fields
-    const requiredFields = ['firstName', 'lastName', 'email', 'phone', 'serviceId', 'bookingDate', 'startTime', 'endTime'];
+    const requiredFields = ['firstName', 'lastName', 'email', 'phone', 'productId', 'productTitle', 'bookingDate', 'startTime', 'endTime'];
     for (const field of requiredFields) {
       if (!data[field]) {
         return json({ error: `${field} is required` }, { status: 400 });
@@ -48,30 +48,46 @@ export async function action({ request }) {
       });
     }
 
-    // Get service details
-    const service = await prisma.service.findUnique({
-      where: { id: data.serviceId }
-    });
+    // Create booking with product booking configuration
+    const bookingCreateData = {
+      userId: user.id,
+      bookingDate: new Date(data.bookingDate),
+      startTime: data.startTime,
+      endTime: data.endTime,
+      specialRequests: data.specialRequests || null,
+      totalPrice: data.totalPrice,
+      status: 'PENDING'
+    };
 
-    if (!service) {
-      return json({ error: 'Service not found' }, { status: 404 });
+    // Add product booking configuration if provided
+    if (data.productBookingConfigId) {
+      bookingCreateData.productBookingConfigId = data.productBookingConfigId;
+    } else {
+      // Fallback: create or get service based on product
+      let service = await prisma.service.findFirst({
+        where: { name: data.productTitle }
+      });
+
+      if (!service) {
+        service = await prisma.service.create({
+          data: {
+            name: data.productTitle,
+            description: `Birthday party center service - ${data.productTitle}`,
+            price: data.totalPrice,
+            duration: 480 // 8 hours
+          }
+        });
+      }
+      bookingCreateData.serviceId = service.id;
     }
 
     // Create booking
     const booking = await prisma.booking.create({
-      data: {
-        userId: user.id,
-        serviceId: data.serviceId,
-        bookingDate: new Date(data.bookingDate),
-        startTime: data.startTime,
-        endTime: data.endTime,
-        specialRequests: data.specialRequests || null,
-        totalPrice: data.totalPrice,
-        status: 'PENDING'
-      },
+      data: bookingCreateData,
       include: {
         user: true,
-        service: true
+        service: true,
+        productBookingConfig: true
       }
     });
 
@@ -81,7 +97,8 @@ export async function action({ request }) {
       data: { status: 'CONFIRMED' },
       include: {
         user: true,
-        service: true
+        service: true,
+        productBookingConfig: true
       }
     });
 

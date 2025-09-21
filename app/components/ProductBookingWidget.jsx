@@ -15,28 +15,30 @@ import BookingForm from './BookingForm';
 
 const ProductBookingWidget = ({ productId, productTitle, productPrice }) => {
   const [showBookingForm, setShowBookingForm] = useState(false);
-  const [services, setServices] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [bookingConfig, setBookingConfig] = useState(null);
+  const [hasBooking, setHasBooking] = useState(false);
 
   useEffect(() => {
-    loadServices();
-  }, []);
+    checkBookingEnabled();
+  }, [productId]);
 
-  const loadServices = async () => {
+  const checkBookingEnabled = async () => {
     try {
       setIsLoading(true);
-      const response = await fetch('/api/services');
+      const response = await fetch(`/api/product-booking-check?productId=${productId}`);
       const data = await response.json();
       
       if (data.error) {
         setError(data.error);
       } else {
-        setServices(data.services || []);
+        setHasBooking(data.hasBooking);
+        setBookingConfig(data.configuration);
       }
     } catch (err) {
-      setError('Failed to load services');
-      console.error('Error loading services:', err);
+      setError('Failed to check booking configuration');
+      console.error('Error checking booking:', err);
     } finally {
       setIsLoading(false);
     }
@@ -55,27 +57,13 @@ const ProductBookingWidget = ({ productId, productTitle, productPrice }) => {
     }).format(price);
   };
 
-  const getServicePriceRange = () => {
-    if (services.length === 0) return null;
-    
-    const prices = services.map(s => s.price);
-    const minPrice = Math.min(...prices);
-    const maxPrice = Math.max(...prices);
-    
-    if (minPrice === maxPrice) {
-      return formatPrice(minPrice);
-    }
-    
-    return `${formatPrice(minPrice)} - ${formatPrice(maxPrice)}`;
-  };
-
   if (isLoading) {
     return (
       <Card>
         <Box padding="400">
           <InlineStack align="center">
             <Spinner size="small" />
-            <Text variant="bodyMd">Loading booking options...</Text>
+            <Text variant="bodyMd">Checking booking availability...</Text>
           </InlineStack>
         </Box>
       </Card>
@@ -92,16 +80,8 @@ const ProductBookingWidget = ({ productId, productTitle, productPrice }) => {
     );
   }
 
-  if (services.length === 0) {
-    return (
-      <Card>
-        <Box padding="400">
-          <Text variant="bodyMd" color="subdued">
-            No booking services available at this time.
-          </Text>
-        </Box>
-      </Card>
-    );
+  if (!hasBooking) {
+    return null; // Don't show the widget if booking is not enabled
   }
 
   return (
@@ -122,11 +102,11 @@ const ProductBookingWidget = ({ productId, productTitle, productPrice }) => {
               </Text>
               
               <Text variant="bodyMd">
-                <strong>Price Range:</strong> {getServicePriceRange()}
+                <strong>Price:</strong> {formatPrice(productPrice)}
               </Text>
               
               <Text variant="bodyMd">
-                <strong>Available Services:</strong> {services.length} option{services.length !== 1 ? 's' : ''}
+                <strong>Duration:</strong> Full day service (8 hours)
               </Text>
             </BlockStack>
             
@@ -169,6 +149,9 @@ const ProductBookingWidget = ({ productId, productTitle, productPrice }) => {
       {showBookingForm && (
         <BookingForm
           productId={productId}
+          productTitle={productTitle}
+          productPrice={productPrice}
+          bookingConfig={bookingConfig}
           onClose={() => setShowBookingForm(false)}
           onSuccess={handleBookingSuccess}
         />

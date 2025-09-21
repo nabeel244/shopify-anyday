@@ -1,0 +1,32 @@
+api_version = "2024-01"
+
+[[extensions]]
+type = "ui_extension"
+name = "product-booking-block"
+
+[extensions.targeting]
+target = "purchase.checkout.block.render"
+module = "./src/Checkout.jsx"
+
+[[extensions.targeting]]
+target = "purchase.checkout.block.render"
+module = "./src/ProductBookingBlock.jsx"
+
+[extensions.settings]
+[[extensions.settings.fields]]
+key = "title"
+type = "single_line_text_field"
+name = "Block Title"
+default = "Book This Service"
+
+[[extensions.settings.fields]]
+key = "description"
+type = "multi_line_text_field"
+name = "Description"
+default = "Book your appointment online and get instant confirmation."
+
+[[extensions.settings.fields]]
+key = "button_text"
+type = "single_line_text_field"
+name = "Button Text"
+default = "Book Appointment"

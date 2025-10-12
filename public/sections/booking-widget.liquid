@@ -1,0 +1,515 @@
+{% comment %}
+  Booking Widget Section for Shopify 2.0 Themes
+  This section can be added to any template via the theme editor
+{% endcomment %}
+
+{{ 'booking-widget.css' | asset_url | stylesheet_tag }}
+
+<div class="booking-widget-section" id="bookingWidget">
+  {% if product.metafields.custom.booking_enabled %}
+    <div class="booking-card">
+      <!-- Booking Summary Card -->
+      <div class="booking-summary-card" id="bookingSummary">
+        <div class="booking-header">
+          <h3>📅 Book This Service</h3>
+        </div>
+        <div class="booking-content">
+          <div class="booking-summary">
+            <h4>Service Details</h4>
+            <div class="summary-row">
+              <span><strong>Service:</strong></span>
+              <span id="serviceName">{{ product.title }}</span>
+            </div>
+            <div class="summary-row">
+              <span><strong>Price:</strong></span>
+              <span class="price-badge" id="servicePrice">{{ product.price | money }}</span>
+            </div>
+            <div class="summary-row">
+              <span><strong>Duration:</strong></span>
+              <span>{{ section.settings.duration | default: "Full day service (8 hours)" }}</span>
+            </div>
+          </div>
+
+          <div class="booking-info">
+            <h4>{{ section.settings.info_title | default: "What's included:" }}</h4>
+            <ul>
+              {% if section.settings.include_1 != blank %}
+                <li>{{ section.settings.include_1 }}</li>
+              {% endif %}
+              {% if section.settings.include_2 != blank %}
+                <li>{{ section.settings.include_2 }}</li>
+              {% endif %}
+              {% if section.settings.include_3 != blank %}
+                <li>{{ section.settings.include_3 }}</li>
+              {% endif %}
+              {% if section.settings.include_4 != blank %}
+                <li>{{ section.settings.include_4 }}</li>
+              {% endif %}
+            </ul>
+          </div>
+
+          <button class="booking-button" onclick="showBookingForm()">
+            📅 Book Appointment
+          </button>
+
+          <p style="text-align: center; color: #666; margin-top: 15px; font-size: 14px;">
+            {{ section.settings.booking_description | default: "Choose your preferred date and time. You'll receive instant confirmation via email." }}
+          </p>
+        </div>
+      </div>
+
+      <!-- Booking Form -->
+      <div class="booking-form" id="bookingForm">
+        <div class="booking-header">
+          <h3>Book Your Appointment</h3>
+        </div>
+        <div class="booking-content">
+          <button class="toggle-form" onclick="hideBookingForm()">✕ Cancel</button>
+
+          <div id="messageContainer"></div>
+
+          <form id="bookingFormElement">
+            <!-- Personal Information -->
+            <div class="form-group">
+              <h4>Personal Information</h4>
+              <div class="form-row">
+                <div>
+                  <label for="firstName">First Name <span class="required">*</span></label>
+                  <input type="text" id="firstName" name="firstName" required>
+                  <div class="error" id="firstNameError"></div>
+                </div>
+                <div>
+                  <label for="lastName">Last Name <span class="required">*</span></label>
+                  <input type="text" id="lastName" name="lastName" required>
+                  <div class="error" id="lastNameError"></div>
+                </div>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <div class="form-row">
+                <div>
+                  <label for="email">Email <span class="required">*</span></label>
+                  <input type="email" id="email" name="email" required>
+                  <div class="error" id="emailError"></div>
+                </div>
+                <div>
+                  <label for="phone">Phone Number <span class="required">*</span></label>
+                  <input type="tel" id="phone" name="phone" required>
+                  <div class="error" id="phoneError"></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Date & Time Selection -->
+            <div class="form-group">
+              <h4>Select Date & Time</h4>
+              <div class="form-row">
+                <div>
+                  <label for="bookingDate">Booking Date <span class="required">*</span></label>
+                  <input type="date" id="bookingDate" name="bookingDate" required>
+                  <div class="error" id="bookingDateError"></div>
+                </div>
+                <div>
+                  <label for="startTime">Time Slot <span class="required">*</span></label>
+                  <select id="startTime" name="startTime" required>
+                    <option value="">Select a time...</option>
+                    {% assign time_slots = section.settings.time_slots | split: ',' %}
+                    {% for slot in time_slots %}
+                      {% assign slot_trimmed = slot | strip %}
+                      {% if slot_trimmed != blank %}
+                        <option value="{{ slot_trimmed }}">{{ slot_trimmed }}</option>
+                      {% endif %}
+                    {% endfor %}
+                    {% if time_slots.size == 0 %}
+                      <option value="09:00">9:00 AM</option>
+                      <option value="10:00">10:00 AM</option>
+                      <option value="11:00">11:00 AM</option>
+                      <option value="12:00">12:00 PM</option>
+                      <option value="13:00">1:00 PM</option>
+                      <option value="14:00">2:00 PM</option>
+                      <option value="15:00">3:00 PM</option>
+                      <option value="16:00">4:00 PM</option>
+                      <option value="17:00">5:00 PM</option>
+                    {% endif %}
+                  </select>
+                  <div class="error" id="startTimeError"></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Special Requests -->
+            <div class="form-group">
+              <label for="specialRequests">Special Requests (Optional)</label>
+              <textarea id="specialRequests" name="specialRequests" rows="3" placeholder="Any special requests or notes for your appointment..."></textarea>
+            </div>
+
+            <!-- Booking Summary -->
+            <div class="form-group">
+              <h4>Booking Summary</h4>
+              <div class="booking-summary">
+                <div class="summary-row">
+                  <span><strong>Service:</strong></span>
+                  <span id="summaryServiceName">{{ product.title }}</span>
+                </div>
+                <div class="summary-row">
+                  <span><strong>Date:</strong></span>
+                  <span id="summaryDate">-</span>
+                </div>
+                <div class="summary-row">
+                  <span><strong>Time:</strong></span>
+                  <span id="summaryTime">-</span>
+                </div>
+                <div class="summary-row">
+                  <span><strong>Total Price:</strong></span>
+                  <span class="price-badge" id="summaryPrice">{{ product.price | money }}</span>
+                </div>
+              </div>
+            </div>
+
+            <button type="submit" class="booking-button" id="submitButton">
+              Confirm Booking
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
+  {% endif %}
+</div>
+
+<script>
+  // Product data from Shopify
+  const productData = {
+    id: '{{ product.id }}',
+    title: '{{ product.title | escape }}',
+    price: {{ product.price | money_without_currency | remove: ',' }}
+  };
+
+  // Initialize the widget
+  document.addEventListener('DOMContentLoaded', function() {
+    updateProductInfo();
+    setMinDate();
+    setupFormValidation();
+  });
+
+  function updateProductInfo() {
+    document.getElementById('serviceName').textContent = productData.title;
+    document.getElementById('servicePrice').textContent = formatPrice(productData.price);
+    document.getElementById('summaryServiceName').textContent = productData.title;
+    document.getElementById('summaryPrice').textContent = formatPrice(productData.price);
+  }
+
+  function setMinDate() {
+    const today = new Date();
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    
+    const dateInput = document.getElementById('bookingDate');
+    if (dateInput) {
+      dateInput.min = tomorrow.toISOString().split('T')[0];
+    }
+  }
+
+  function formatPrice(price) {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD'
+    }).format(price);
+  }
+
+  function showBookingForm() {
+    const summary = document.getElementById('bookingSummary');
+    const form = document.getElementById('bookingForm');
+    if (summary && form) {
+      summary.style.display = 'none';
+      form.classList.add('show');
+    }
+  }
+
+  function hideBookingForm() {
+    const summary = document.getElementById('bookingSummary');
+    const form = document.getElementById('bookingForm');
+    if (summary && form) {
+      form.classList.remove('show');
+      summary.style.display = 'block';
+      clearForm();
+    }
+  }
+
+  function clearForm() {
+    const form = document.getElementById('bookingFormElement');
+    if (form) {
+      form.reset();
+      clearErrors();
+      setMinDate();
+    }
+  }
+
+  function setupFormValidation() {
+    const form = document.getElementById('bookingFormElement');
+    const dateInput = document.getElementById('bookingDate');
+    const timeInput = document.getElementById('startTime');
+
+    if (form) {
+      // Update summary when date/time changes
+      if (dateInput) dateInput.addEventListener('change', updateSummary);
+      if (timeInput) timeInput.addEventListener('change', updateSummary);
+
+      // Form submission
+      form.addEventListener('submit', handleSubmit);
+    }
+  }
+
+  function updateSummary() {
+    const date = document.getElementById('bookingDate').value;
+    const time = document.getElementById('startTime').value;
+
+    if (date) {
+      const dateObj = new Date(date);
+      document.getElementById('summaryDate').textContent = dateObj.toLocaleDateString('en-US', {
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+      });
+    }
+
+    if (time) {
+      const endTime = calculateEndTime(time, {{ section.settings.duration_minutes | default: 480 }});
+      document.getElementById('summaryTime').textContent = `${formatTime(time)} - ${formatTime(endTime)}`;
+    }
+  }
+
+  function calculateEndTime(startTime, durationMinutes) {
+    const [hours, minutes] = startTime.split(':').map(Number);
+    const startDate = new Date();
+    startDate.setHours(hours, minutes, 0, 0);
+    
+    const endDate = new Date(startDate.getTime() + durationMinutes * 60000);
+    return `${endDate.getHours().toString().padStart(2, '0')}:${endDate.getMinutes().toString().padStart(2, '0')}`;
+  }
+
+  function formatTime(timeString) {
+    const [hours, minutes] = timeString.split(':').map(Number);
+    const date = new Date();
+    date.setHours(hours, minutes, 0, 0);
+    return date.toLocaleTimeString('en-US', {
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true
+    });
+  }
+
+  function validateForm() {
+    clearErrors();
+    let isValid = true;
+
+    const firstName = document.getElementById('firstName').value.trim();
+    const lastName = document.getElementById('lastName').value.trim();
+    const email = document.getElementById('email').value.trim();
+    const phone = document.getElementById('phone').value.trim();
+    const bookingDate = document.getElementById('bookingDate').value;
+    const startTime = document.getElementById('startTime').value;
+
+    if (!firstName) {
+      showError('firstNameError', 'First name is required');
+      isValid = false;
+    }
+
+    if (!lastName) {
+      showError('lastNameError', 'Last name is required');
+      isValid = false;
+    }
+
+    if (!email) {
+      showError('emailError', 'Email is required');
+      isValid = false;
+    } else if (!/\S+@\S+\.\S+/.test(email)) {
+      showError('emailError', 'Email is invalid');
+      isValid = false;
+    }
+
+    if (!phone) {
+      showError('phoneError', 'Phone number is required');
+      isValid = false;
+    }
+
+    if (!bookingDate) {
+      showError('bookingDateError', 'Please select a date');
+      isValid = false;
+    }
+
+    if (!startTime) {
+      showError('startTimeError', 'Please select a time slot');
+      isValid = false;
+    }
+
+    return isValid;
+  }
+
+  function showError(elementId, message) {
+    const element = document.getElementById(elementId);
+    if (element) {
+      element.textContent = message;
+    }
+  }
+
+  function clearErrors() {
+    const errorElements = document.querySelectorAll('.error');
+    errorElements.forEach(element => {
+      element.textContent = '';
+    });
+  }
+
+  function showMessage(message, type = 'success') {
+    const container = document.getElementById('messageContainer');
+    if (container) {
+      const messageClass = type === 'success' ? 'success-message' : 'error-message';
+      container.innerHTML = `<div class="${messageClass}">${message}</div>`;
+      
+      // Scroll to message
+      container.scrollIntoView({ behavior: 'smooth' });
+    }
+  }
+
+  async function handleSubmit(event) {
+    event.preventDefault();
+
+    if (!validateForm()) {
+      return;
+    }
+
+    const submitButton = document.getElementById('submitButton');
+    submitButton.classList.add('loading');
+    submitButton.disabled = true;
+
+    try {
+      const formData = new FormData(event.target);
+      const bookingData = {
+        firstName: formData.get('firstName'),
+        lastName: formData.get('lastName'),
+        email: formData.get('email'),
+        phone: formData.get('phone'),
+        bookingDate: formData.get('bookingDate'),
+        startTime: formData.get('startTime'),
+        specialRequests: formData.get('specialRequests'),
+        productId: productData.id,
+        productTitle: productData.title,
+        productPrice: productData.price,
+        totalPrice: productData.price
+      };
+
+      // Calculate end time
+      const endTime = calculateEndTime(bookingData.startTime, {{ section.settings.duration_minutes | default: 480 }});
+      bookingData.endTime = endTime;
+
+      const response = await fetch('/api/bookings', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ bookingData })
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        showMessage('🎉 Booking confirmed successfully! You will receive a confirmation email shortly.', 'success');
+        clearForm();
+        setTimeout(() => {
+          hideBookingForm();
+        }, 3000);
+      } else {
+        showMessage(`❌ Error: ${result.error}`, 'error');
+      }
+    } catch (error) {
+      console.error('Booking error:', error);
+      showMessage('❌ Failed to submit booking. Please try again.', 'error');
+    } finally {
+      submitButton.classList.remove('loading');
+      submitButton.disabled = false;
+    }
+  }
+</script>
+
+{% schema %}
+{
+  "name": "Booking Widget",
+  "tag": "section",
+  "class": "section",
+  "settings": [
+    {
+      "type": "header",
+      "content": "Booking Settings"
+    },
+    {
+      "type": "text",
+      "id": "duration",
+      "label": "Service Duration",
+      "default": "Full day service (8 hours)"
+    },
+    {
+      "type": "number",
+      "id": "duration_minutes",
+      "label": "Duration in Minutes",
+      "default": 480
+    },
+    {
+      "type": "text",
+      "id": "info_title",
+      "label": "Info Section Title",
+      "default": "What's included:"
+    },
+    {
+      "type": "text",
+      "id": "booking_description",
+      "label": "Booking Description",
+      "default": "Choose your preferred date and time. You'll receive instant confirmation via email."
+    },
+    {
+      "type": "header",
+      "content": "What's Included"
+    },
+    {
+      "type": "text",
+      "id": "include_1",
+      "label": "Include Item 1",
+      "default": "Instant booking confirmation"
+    },
+    {
+      "type": "text",
+      "id": "include_2",
+      "label": "Include Item 2",
+      "default": "Email notifications"
+    },
+    {
+      "type": "text",
+      "id": "include_3",
+      "label": "Include Item 3",
+      "default": "Easy rescheduling"
+    },
+    {
+      "type": "text",
+      "id": "include_4",
+      "label": "Include Item 4",
+      "default": "Professional service"
+    },
+    {
+      "type": "header",
+      "content": "Time Slots"
+    },
+    {
+      "type": "textarea",
+      "id": "time_slots",
+      "label": "Available Time Slots (comma-separated)",
+      "default": "09:00, 10:00, 11:00, 12:00, 13:00, 14:00, 15:00, 16:00, 17:00",
+      "info": "Enter time slots separated by commas (e.g., 09:00, 10:00, 11:00)"
+    }
+  ],
+  "presets": [
+    {
+      "name": "Booking Widget"
+    }
+  ]
+}
+{% endschema %}

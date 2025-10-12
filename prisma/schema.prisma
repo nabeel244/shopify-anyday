@@ -1,0 +1,134 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  firstName String
+  lastName  String
+  email     String   @unique
+  phone     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  bookings Booking[]
+
+  @@map("users")
+}
+
+model Service {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  price       Float
+  duration    Int      // Duration in minutes
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  bookings Booking[]
+
+  @@map("services")
+}
+
+model ProductBookingConfig {
+  id              String   @id @default(cuid())
+  productId       String   @unique
+  productTitle    String
+  productPrice    Float
+  productRating   Float?   // Product rating (1-5 stars)
+  city            String?  // City where service is available
+  availableDays   String   // JSON array of days ["monday", "tuesday", etc.]
+  timeSlots       String?  // JSON array of specific time slots (legacy - will be deprecated)
+  timeRanges      String?  // JSON array of time ranges [{"start": "10:00", "end": "12:00", "duration": 120}]
+  timeRangeStart  String?  // e.g., "09:00" (legacy)
+  timeRangeEnd    String?  // e.g., "17:00" (legacy)
+  slotDuration    Int?     // Duration in minutes (legacy)
+  disabledDates   String?  // JSON array of disabled dates
+  services        String?  // JSON array of available services with prices
+  duration        Int      @default(480) // Default 8 hours in minutes
+  maxBookings     Int      @default(1)
+  bookingStartDate String? // Start date for booking availability (YYYY-MM-DD)
+  bookingEndDate   String? // End date for booking availability (YYYY-MM-DD)
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  bookings Booking[]
+
+  @@map("product_booking_configs")
+}
+
+model Booking {
+  id                     String   @id @default(cuid())
+  userId                 String
+  serviceId              String?
+  productBookingConfigId String?
+  bookingDate            DateTime
+  startTime              String
+  endTime                String
+  specialRequests        String?
+  totalPrice             Float
+  status                 BookingStatus @default(PENDING)
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  // Relations
+  user                 User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  service              Service?             @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+  productBookingConfig ProductBookingConfig? @relation(fields: [productBookingConfigId], references: [id], onDelete: SetNull)
+
+  @@map("bookings")
+}
+
+model GoogleSheetConfig {
+  id            String   @id @default(cuid())
+  shopDomain    String   @unique
+  spreadsheetId String
+  sheetName     String
+  credentials   String   // JSON string of Google service account credentials
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@map("google_sheet_configs")
+}
+
+// Shopify Session Storage (required by Shopify App Remix)
+model Session {
+  id            String    @id
+  shop          String
+  state         String
+  isOnline      Boolean   @default(false)
+  scope         String?
+  expires       DateTime?
+  accessToken   String
+  userId        String?
+  firstName     String?
+  lastName      String?
+  email         String?
+  accountOwner  Boolean   @default(false)
+  locale        String?
+  collaborator  Boolean   @default(false)
+  emailVerified Boolean   @default(false)
+
+  @@map("sessions")
+}
+
+// Enums
+enum BookingStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+  COMPLETED
+}

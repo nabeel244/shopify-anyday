@@ -1,0 +1,1530 @@
+{% comment %}
+  Simple Booking Widget - Shows Admin's Selected Dates and Times
+{% endcomment %}
+
+<div class="simple-booking-widget" id="simpleBookingWidget">
+  <div id="bookingContent" style="display: none;">
+    <!-- Booking widget will be inserted here -->
+  </div>
+  <div id="loadingMessage" style="text-align: center; padding: 20px;">
+    <p>Loading booking options...</p>
+  </div>
+</div>
+
+<script>
+console.log('🔍 Simple Booking Widget Loaded');
+
+// Use your current ngrok URL
+const APP_BASE_URL = 'https://e8aa19ec7ecb.ngrok-free.app';
+
+// Helper functions
+function formatTime(timeString) {
+  const [hours, minutes] = timeString.split(':');
+  const hour = parseInt(hours);
+  const ampm = hour >= 12 ? 'PM' : 'AM';
+  const displayHour = hour % 12 || 12;
+  return `${displayHour}:${minutes} ${ampm}`;
+}
+
+function formatTimeRange(range) {
+  const formatTime = (timeStr) => {
+    const [hours, minutes] = timeStr.split(':');
+    const hour = parseInt(hours);
+    const ampm = hour >= 12 ? 'PM' : 'AM';
+    const displayHour = hour % 12 || 12;
+    return `${displayHour}:${minutes} ${ampm}`;
+  };
+  
+  const duration = Math.floor(range.duration / 60);
+  const durationMinutes = range.duration % 60;
+  const durationStr = durationMinutes > 0 ? `${duration}h ${durationMinutes}m` : `${duration}h`;
+  
+  return `${formatTime(range.start)} - ${formatTime(range.end)} (${durationStr})`;
+}
+
+async function loadBookingConfig() {
+  const productId = '{{ product.id }}';
+  
+  console.log('🔍 Loading booking config for product:', productId);
+  console.log('🔍 APP_BASE_URL:', APP_BASE_URL);
+  
+  try {
+    const url = `${APP_BASE_URL}/api/product-booking-check?productId=${productId}`;
+    console.log('🔍 Fetching URL:', url);
+    
+    const response = await fetch(url, {
+      headers: {
+        'ngrok-skip-browser-warning': 'true'
+      }
+    });
+    
+    console.log('🔍 Response status:', response.status);
+    console.log('🔍 Response ok:', response.ok);
+    
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+    
+    const data = await response.json();
+    console.log('🔍 API Response:', data);
+    
+    if (data.hasBooking && data.configuration) {
+      console.log('🔍 Showing booking widget');
+      showBookingWidget(data.configuration);
+    } else {
+      console.log('🔍 No booking available, showing message');
+      showNoBookingMessage(data.message || 'Booking not available for this product');
+    }
+  } catch (error) {
+    console.error('❌ Error loading booking configuration:', error);
+    showErrorMessage(`Failed to load booking options: ${error.message}`);
+  }
+}
+
+function showBookingWidget(config) {
+  const bookingContent = document.getElementById('bookingContent');
+  const loadingMessage = document.getElementById('loadingMessage');
+  
+  loadingMessage.style.display = 'none';
+  bookingContent.style.display = 'block';
+  
+  // Store config globally
+  window.bookingConfig = config;
+  
+  console.log('🔍 Showing booking widget with config:', {
+    availableDays: config.availableDays,
+    timeSlots: config.timeSlots,
+    city: config.city,
+    bookingStartDate: config.bookingStartDate,
+    bookingEndDate: config.bookingEndDate
+  });
+  
+  bookingContent.innerHTML = `
+    <div class="booking-container">
+      <!-- Header -->
+      <div class="booking-header">
+        <h2>📅 Book ${config.productTitle}</h2>
+        ${config.city ? `<p class="location">📍 ${config.city}</p>` : ''}
+        <p class="price">$${config.productPrice}</p>
+      </div>
+
+      <!-- Progress Steps -->
+      <div class="progress-steps">
+        <div class="step active" id="step1">
+          <div class="step-number">1</div>
+          <div class="step-label">Select Date & Time</div>
+        </div>
+        <div class="step" id="step2">
+          <div class="step-number">2</div>
+          <div class="step-label">Your Information</div>
+        </div>
+        <div class="step" id="step3">
+          <div class="step-number">3</div>
+          <div class="step-label">Confirm Booking</div>
+        </div>
+      </div>
+
+      <!-- Step 1: Date & Time Selection -->
+      <div class="booking-step" id="dateTimeStep">
+        <div class="step-content">
+          <h3>📅 Select Date & Time</h3>
+          
+          <!-- Admin's Configuration Display -->
+          <div class="admin-config-info">
+            <h4>📋 Available Options</h4>
+            
+            <div class="config-section">
+              <h5>📅 Available Days</h5>
+              <div class="available-days">
+                ${config.availableDays.map(day => `
+                  <span class="day-badge">${day.charAt(0).toUpperCase() + day.slice(1)}</span>
+                `).join('')}
+              </div>
+            </div>
+
+            ${config.bookingStartDate && config.bookingEndDate ? `
+            <div class="config-section">
+              <h5>📆 Booking Period</h5>
+              <p class="date-range">
+                ${new Date(config.bookingStartDate).toLocaleDateString('en-US', { 
+                  month: 'long', 
+                  day: 'numeric', 
+                  year: 'numeric' 
+                })} - ${new Date(config.bookingEndDate).toLocaleDateString('en-US', { 
+                  month: 'long', 
+                  day: 'numeric', 
+                  year: 'numeric' 
+                })}
+              </p>
+            </div>
+            ` : ''}
+
+            <div class="config-section">
+              <h5>⏰ Available Time Ranges</h5>
+              <div class="time-ranges-display">
+                ${config.timeRanges && config.timeRanges.length > 0 ? 
+                  config.timeRanges.map(range => `
+                    <span class="time-range-badge">${formatTimeRange(range)}</span>
+                  `).join('') :
+                  config.timeSlots.map(slot => `
+                    <span class="time-slot-badge">${formatTime(slot)}</span>
+                  `).join('')
+                }
+              </div>
+            </div>
+          </div>
+
+          <!-- Calendar -->
+          <div class="calendar-section">
+            <h4>📅 Choose Your Date</h4>
+            <div class="calendar-container">
+              <div class="calendar-header">
+                <button type="button" id="prevMonth" class="nav-button">‹</button>
+                <h5 id="calendarMonthYear" class="month-year"></h5>
+                <button type="button" id="nextMonth" class="nav-button">›</button>
+              </div>
+              <div class="calendar-grid" id="calendarGrid"></div>
+            </div>
+          </div>
+
+          <!-- Time Selection -->
+          <div class="time-section">
+            <h4>⏰ Choose Your Time</h4>
+            <div class="time-ranges" id="timeRanges">
+              <p class="no-time-message">Please select a date first</p>
+            </div>
+          </div>
+
+          <!-- Selected Summary -->
+          <div class="selection-summary" id="selectionSummary" style="display: none;">
+            <h4>✅ Your Selection</h4>
+            <div class="selected-info">
+              <div class="selected-item">
+                <span class="label">Date:</span>
+                <span class="value" id="selectedDateDisplay">-</span>
+              </div>
+              <div class="selected-item">
+                <span class="label">Time:</span>
+                <span class="value" id="selectedTimeDisplay">-</span>
+              </div>
+            </div>
+            <button type="button" class="next-step-btn" id="nextToForm" disabled>
+              Continue to Information →
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Step 2: Form -->
+      <div class="booking-step" id="formStep" style="display: none;">
+        <div class="step-content">
+          <h3>👤 Your Information</h3>
+          
+          <form id="bookingForm" class="booking-form">
+            <div class="form-section">
+              <h4>Personal Details</h4>
+              <div class="form-row">
+                <input type="text" name="firstName" placeholder="First Name" required>
+                <input type="text" name="lastName" placeholder="Last Name" required>
+              </div>
+              <div class="form-row">
+                <input type="email" name="email" placeholder="Email Address" required>
+                <input type="tel" name="phone" placeholder="Phone Number" required>
+              </div>
+            </div>
+
+            ${config.services && config.services.length > 0 ? `
+            <div class="form-section">
+              <h4>🛠️ Additional Services</h4>
+              <div class="services-list">
+                ${config.services.map(service => `
+                  <label class="service-item">
+                    <input type="checkbox" name="services" value="${service.id}" data-price="${service.price}">
+                    <span class="service-name">${service.name}</span>
+                    <span class="service-price">+$${service.price}</span>
+                  </label>
+                `).join('')}
+              </div>
+            </div>
+            ` : ''}
+
+            <div class="form-section">
+              <h4>📝 Special Requests</h4>
+              <textarea name="notes" placeholder="Any special requests or notes..." rows="3"></textarea>
+            </div>
+
+            <div class="form-section">
+              <h4>💰 Price Summary</h4>
+              <div class="price-summary">
+                <div class="price-item">
+                  <span>Base Price:</span>
+                  <span>$${config.productPrice}</span>
+                </div>
+                <div class="price-item" id="servicesPrice" style="display: none;">
+                  <span>Additional Services:</span>
+                  <span id="servicesTotal">$0.00</span>
+                </div>
+                <div class="price-divider"></div>
+                <div class="price-total">
+                  <span>Total:</span>
+                  <span id="totalPrice">$${config.productPrice}</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Hidden fields -->
+            <input type="hidden" id="bookingDate" name="bookingDate" required>
+            <input type="hidden" name="startTime" value="">
+            <input type="hidden" name="endTime" value="">
+
+            <div class="form-actions">
+              <button type="button" class="back-btn" id="backToDateTime">
+                ← Back to Date & Time
+              </button>
+              <button type="submit" class="book-button">
+                📅 Confirm Booking
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <!-- Step 3: Confirmation -->
+      <div class="booking-step" id="confirmationStep" style="display: none;">
+        <div class="step-content">
+          <div id="bookingMessage"></div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  setupBookingForm(config);
+}
+
+function setupBookingForm(config) {
+  const dateInput = document.getElementById('bookingDate');
+  const timeRanges = document.getElementById('timeRanges');
+  const bookingForm = document.getElementById('bookingForm');
+
+  // Store config globally for calendar access
+  window.bookingConfig = config;
+
+  // Set up calendar
+  setupCalendar(config);
+
+  // Handle date selection from calendar
+  window.selectDate = function(dateString) {
+    const selectedDate = new Date(dateString);
+    const dayName = selectedDate.toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase();
+    
+    console.log('🔍 Selected date:', dateString, 'Day:', dayName);
+    console.log('🔍 Available days:', config.availableDays);
+    
+    // Check if selected day is available
+    if (!config.availableDays.includes(dayName)) {
+      alert(`Sorry, ${dayName.charAt(0).toUpperCase() + dayName.slice(1)} is not available for booking. Please select one of these days: ${config.availableDays.map(d => d.charAt(0).toUpperCase() + d.slice(1)).join(', ')}`);
+      return;
+    }
+
+    // Check if date is within range
+    if (config.bookingStartDate && config.bookingEndDate) {
+      const startDate = new Date(config.bookingStartDate);
+      const endDate = new Date(config.bookingEndDate);
+      
+      if (selectedDate < startDate || selectedDate > endDate) {
+        alert(`This date is outside the booking period (${config.bookingStartDate} to ${config.bookingEndDate}).`);
+        return;
+      }
+    }
+
+    // Set the hidden input value
+    dateInput.value = dateString;
+
+    // Update selected date display
+    const formattedDate = selectedDate.toLocaleDateString('en-US', { 
+      weekday: 'long', 
+      year: 'numeric', 
+      month: 'long', 
+      day: 'numeric' 
+    });
+    document.getElementById('selectedDateDisplay').textContent = formattedDate;
+
+    // Show time ranges - only the admin's specific time ranges
+    console.log('🔍 Showing admin\'s specific time ranges:', config.timeRanges);
+    showTimeRanges(config.timeRanges || config.timeSlots);
+  };
+
+  // Handle time range selection
+  window.selectTimeRange = function(timeRangeValue) {
+    const isTimeRanges = config.timeRanges && config.timeRanges.length > 0;
+    
+    let timeDisplay = '';
+    if (isTimeRanges) {
+      const range = JSON.parse(timeRangeValue);
+      timeDisplay = formatTimeRange(range);
+      document.querySelector('input[name="startTime"]').value = range.start;
+      document.querySelector('input[name="endTime"]').value = range.end;
+    } else {
+      timeDisplay = formatTime(timeRangeValue);
+      document.querySelector('input[name="startTime"]').value = timeRangeValue;
+      document.querySelector('input[name="endTime"]').value = '';
+    }
+    
+    document.getElementById('selectedTimeDisplay').textContent = timeDisplay;
+    
+    // Show selection summary and enable next button
+    document.getElementById('selectionSummary').style.display = 'block';
+    document.getElementById('nextToForm').disabled = false;
+    
+    console.log('🔍 Time range selected:', timeRangeValue);
+  };
+
+  // Handle step navigation
+  document.getElementById('nextToForm').addEventListener('click', function() {
+    showStep(2);
+  });
+
+  document.getElementById('backToDateTime').addEventListener('click', function() {
+    showStep(1);
+  });
+
+  // Handle service selection
+  const serviceCheckboxes = document.querySelectorAll('input[name="services"]');
+  serviceCheckboxes.forEach(checkbox => {
+    checkbox.addEventListener('change', updateTotalPrice);
+  });
+
+  // Handle form submission
+  bookingForm.addEventListener('submit', async function(e) {
+    e.preventDefault();
+    
+    showStep(3); // Show confirmation step
+    
+    const formData = new FormData(this);
+    const selectedServices = [];
+    
+    // Get selected services
+    serviceCheckboxes.forEach(checkbox => {
+      if (checkbox.checked) {
+        selectedServices.push({
+          id: checkbox.value,
+          name: checkbox.closest('.service-item').querySelector('.service-name').textContent,
+          price: parseFloat(checkbox.dataset.price)
+        });
+      }
+    });
+
+    // Calculate total price
+    let totalPrice = parseFloat(config.productPrice);
+    selectedServices.forEach(service => {
+      totalPrice += service.price;
+    });
+
+    const bookingData = {
+      firstName: formData.get('firstName'),
+      lastName: formData.get('lastName'),
+      email: formData.get('email'),
+      phone: formData.get('phone'),
+      bookingDate: formData.get('bookingDate'),
+      startTime: formData.get('startTime'),
+      endTime: formData.get('endTime'),
+      timeRange: formData.get('timeRange'),
+      notes: formData.get('notes'),
+      productId: config.productId,
+      productTitle: config.productTitle,
+      productPrice: config.productPrice,
+      totalPrice: totalPrice,
+      selectedServices: selectedServices,
+      productBookingConfigId: config.id
+    };
+
+    // Show loading state
+    const bookingMessage = document.getElementById('bookingMessage');
+    bookingMessage.innerHTML = `
+      <div class="loading-message">
+        <h3>⏳ Processing Your Booking...</h3>
+        <p>Please wait while we confirm your appointment.</p>
+      </div>
+    `;
+
+    try {
+      const response = await fetch(`${APP_BASE_URL}/api/bookings`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'ngrok-skip-browser-warning': 'true'
+        },
+        body: JSON.stringify({ bookingData })
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        showSuccessMessage(bookingData);
+      } else {
+        throw new Error(result.error || 'Booking failed');
+      }
+    } catch (error) {
+      console.error('Booking error:', error);
+      showErrorMessage(error.message);
+    }
+  });
+}
+
+function showStep(stepNumber) {
+  // Hide all steps
+  document.getElementById('dateTimeStep').style.display = 'none';
+  document.getElementById('formStep').style.display = 'none';
+  document.getElementById('confirmationStep').style.display = 'none';
+  
+  // Remove active class from all steps
+  document.querySelectorAll('.step').forEach(step => step.classList.remove('active'));
+  
+  // Show selected step
+  if (stepNumber === 1) {
+    document.getElementById('dateTimeStep').style.display = 'block';
+    document.getElementById('step1').classList.add('active');
+  } else if (stepNumber === 2) {
+    document.getElementById('formStep').style.display = 'block';
+    document.getElementById('step2').classList.add('active');
+  } else if (stepNumber === 3) {
+    document.getElementById('confirmationStep').style.display = 'block';
+    document.getElementById('step3').classList.add('active');
+  }
+}
+
+}
+
+// Calendar setup
+let currentCalendarMonth = new Date().getMonth();
+let currentCalendarYear = new Date().getFullYear();
+
+function setupCalendar(config) {
+  console.log('🔍 Setting up calendar with config:', config);
+  
+  const prevButton = document.getElementById('prevMonth');
+  const nextButton = document.getElementById('nextMonth');
+  
+  if (!prevButton || !nextButton) {
+    console.error('Calendar navigation buttons not found');
+    return;
+  }
+  
+  // Set initial calendar view based on date range or current month
+  if (config.bookingStartDate) {
+    const startDate = new Date(config.bookingStartDate);
+    currentCalendarMonth = startDate.getMonth();
+    currentCalendarYear = startDate.getFullYear();
+    console.log('🔍 Using booking start date for calendar:', config.bookingStartDate);
+  }
+  
+  // Render initial calendar
+  renderCalendar(currentCalendarYear, currentCalendarMonth);
+  
+  // Set up calendar navigation
+  prevButton.addEventListener('click', () => {
+    currentCalendarMonth--;
+    if (currentCalendarMonth < 0) {
+      currentCalendarMonth = 11;
+      currentCalendarYear--;
+    }
+    renderCalendar(currentCalendarYear, currentCalendarMonth);
+  });
+
+  nextButton.addEventListener('click', () => {
+    currentCalendarMonth++;
+    if (currentCalendarMonth > 11) {
+      currentCalendarMonth = 0;
+      currentCalendarYear++;
+    }
+    renderCalendar(currentCalendarYear, currentCalendarMonth);
+  });
+}
+
+function renderCalendar(year, month) {
+  console.log('🔍 renderCalendar called with:', { year, month });
+  
+  const calendarGrid = document.getElementById('calendarGrid');
+  const monthYear = document.getElementById('calendarMonthYear');
+  
+  if (!calendarGrid || !monthYear) {
+    console.error('❌ Calendar elements not found');
+    return;
+  }
+  
+  const monthNames = [
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December'
+  ];
+  
+  monthYear.textContent = `${monthNames[month]} ${year}`;
+  
+  const firstDay = new Date(year, month, 1);
+  const lastDay = new Date(year, month + 1, 0);
+  const daysInMonth = lastDay.getDate();
+  const startingDayOfWeek = firstDay.getDay();
+  
+  let calendarHTML = '<div class="calendar-weekdays"><span>Sun</span><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span></div>';
+  calendarHTML += '<div class="calendar-days">';
+  
+  // Add empty cells for days before the first day of the month
+  for (let i = 0; i < startingDayOfWeek; i++) {
+    calendarHTML += '<div class="calendar-day empty"></div>';
+  }
+  
+  // Add days of the month
+  for (let day = 1; day <= daysInMonth; day++) {
+    const date = new Date(year, month, day);
+    const dateString = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    const dayName = date.toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase();
+    
+    let dayClass = 'calendar-day';
+    let isClickable = true;
+    let statusText = '';
+    
+    // Check if date is in the past
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    if (date < today) {
+      dayClass += ' past';
+      isClickable = false;
+      statusText = 'Past';
+    }
+    // Check if date is outside booking date range
+    else if (window.bookingConfig && window.bookingConfig.bookingStartDate && window.bookingConfig.bookingEndDate) {
+      const startDate = new Date(window.bookingConfig.bookingStartDate);
+      const endDate = new Date(window.bookingConfig.bookingEndDate);
+      startDate.setHours(0, 0, 0, 0);
+      endDate.setHours(23, 59, 59, 999);
+      
+      if (date < startDate || date > endDate) {
+        dayClass += ' outside-range';
+        isClickable = false;
+        statusText = 'Outside Date Range';
+      }
+      // Check if day is available
+      else if (!window.bookingConfig.availableDays.includes(dayName)) {
+        dayClass += ' unavailable';
+        isClickable = false;
+        statusText = 'Unavailable Day';
+      }
+      else {
+        dayClass += ' available';
+        isClickable = true;
+        statusText = 'Available';
+      }
+    }
+    // Check if day is available
+    else if (!window.bookingConfig || !window.bookingConfig.availableDays || !window.bookingConfig.availableDays.includes(dayName)) {
+      dayClass += ' unavailable';
+      isClickable = false;
+      statusText = 'Unavailable Day';
+    }
+    else {
+      dayClass += ' available';
+      isClickable = true;
+      statusText = 'Available';
+    }
+    
+    if (isClickable) {
+      dayClass += ' clickable';
+    }
+    
+    calendarHTML += `<div class="${dayClass}" ${isClickable ? `onclick="selectDate('${dateString}')"` : ''} title="${statusText}">${day}</div>`;
+  }
+  
+  calendarHTML += '</div>';
+  
+  calendarGrid.innerHTML = calendarHTML;
+  
+  console.log('✅ Calendar rendered');
+}
+
+function showTimeRanges(timeRanges) {
+  const timeRangesContainer = document.getElementById('timeRanges');
+  
+  console.log('🔍 showTimeRanges called with:', timeRanges);
+  
+  if (!timeRanges || timeRanges.length === 0) {
+    timeRangesContainer.innerHTML = '<p class="no-time-message">No time ranges available for this day. Please contact us to arrange a custom time.</p>';
+    return;
+  }
+
+  // Check if we have time ranges or individual time slots
+  const isTimeRanges = timeRanges[0] && typeof timeRanges[0] === 'object' && timeRanges[0].start;
+  
+  let timeRangesHTML = '';
+  
+  if (isTimeRanges) {
+    // Handle time ranges
+    timeRangesHTML = timeRanges.map(range => {
+      const formattedRange = formatTimeRange(range);
+      return `
+        <label class="time-range" onclick="selectTimeRange('${JSON.stringify(range)}')">
+          <input type="radio" name="timeRange" value="${JSON.stringify(range)}" required>
+          <span class="time-range-text">${formattedRange}</span>
+        </label>
+      `;
+    }).join('');
+  } else {
+    // Handle individual time slots (fallback)
+    timeRangesHTML = timeRanges.map(timeSlot => {
+      const formattedTime = formatTime(timeSlot);
+      return `
+        <label class="time-range" onclick="selectTimeRange('${timeSlot}')">
+          <input type="radio" name="timeRange" value="${timeSlot}" required>
+          <span class="time-range-text">${formattedTime}</span>
+        </label>
+      `;
+    }).join('');
+  }
+
+  timeRangesContainer.innerHTML = `
+    <div class="time-ranges-header">
+      <p>Available time ranges for your selected date:</p>
+    </div>
+    ${timeRangesHTML}
+  `;
+
+  // Enable book button when time range is selected
+  const timeRangeInputs = document.querySelectorAll('input[name="timeRange"]');
+  timeRangeInputs.forEach(input => {
+    input.addEventListener('change', function() {
+      document.querySelector('.book-button').disabled = false;
+      
+      // Set start and end times based on selection
+      if (isTimeRanges) {
+        const range = JSON.parse(this.value);
+        document.querySelector('input[name="startTime"]').value = range.start;
+        document.querySelector('input[name="endTime"]').value = range.end;
+      } else {
+        // For individual time slots, set start time only
+        document.querySelector('input[name="startTime"]').value = this.value;
+        document.querySelector('input[name="endTime"]').value = '';
+      }
+      
+      console.log('🔍 Time range selected:', this.value);
+    });
+  });
+}
+
+function updateTotalPrice() {
+  const basePrice = parseFloat(window.bookingConfig.productPrice);
+  const serviceCheckboxes = document.querySelectorAll('input[name="services"]:checked');
+  let servicesTotal = 0;
+  
+  serviceCheckboxes.forEach(checkbox => {
+    servicesTotal += parseFloat(checkbox.dataset.price);
+  });
+  
+  const totalPrice = basePrice + servicesTotal;
+  
+  document.getElementById('totalPrice').textContent = `$${totalPrice.toFixed(2)}`;
+  
+  const servicesPriceDiv = document.getElementById('servicesPrice');
+  const servicesTotalSpan = document.getElementById('servicesTotal');
+  
+  if (servicesTotal > 0) {
+    servicesPriceDiv.style.display = 'flex';
+    servicesTotalSpan.textContent = `$${servicesTotal.toFixed(2)}`;
+  } else {
+    servicesPriceDiv.style.display = 'none';
+  }
+}
+
+function showSuccessMessage(bookingData) {
+  const messageDiv = document.getElementById('bookingMessage');
+  messageDiv.innerHTML = `
+          <div class="success-message">
+            <h3>🎉 Booking Confirmed!</h3>
+            <p>Your appointment has been successfully booked. You will receive a confirmation email shortly.</p>
+            <div class="booking-summary">
+              <p><strong>Date:</strong> ${new Date(bookingData.bookingDate).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
+        <p><strong>Time:</strong> ${formatTime(bookingData.startTime)}</p>
+        <p><strong>Total:</strong> $${bookingData.totalPrice.toFixed(2)}</p>
+            </div>
+          </div>
+        `;
+  messageDiv.style.display = 'block';
+  document.getElementById('bookingForm').style.display = 'none';
+}
+
+function showErrorMessage(message) {
+  const messageDiv = document.getElementById('bookingMessage');
+  messageDiv.innerHTML = `
+        <div class="error-message">
+          <h3>❌ Booking Failed</h3>
+      <p>${message}</p>
+      <button onclick="location.reload()" class="retry-button">Try Again</button>
+        </div>
+      `;
+  messageDiv.style.display = 'block';
+}
+
+function showNoBookingMessage(message) {
+  const bookingContent = document.getElementById('bookingContent');
+  const loadingMessage = document.getElementById('loadingMessage');
+  
+  loadingMessage.style.display = 'none';
+  bookingContent.style.display = 'block';
+  
+  bookingContent.innerHTML = `
+    <div class="no-booking-message">
+      <h3>📅 Booking Not Available</h3>
+      <p>${message}</p>
+      <p>Please contact us to arrange your appointment.</p>
+    </div>
+  `;
+}
+
+// Load booking config when page loads
+document.addEventListener('DOMContentLoaded', function() {
+  loadBookingConfig();
+});
+</script>
+
+<style>
+/* Simple Booking Widget Styles */
+.simple-booking-widget {
+  max-width: 800px;
+  margin: 20px auto;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+.booking-container {
+    background: white;
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+    overflow: hidden;
+  }
+
+  .booking-header {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+  padding: 30px;
+  text-align: center;
+}
+
+.booking-header h2 {
+  margin: 0 0 10px 0;
+  font-size: 24px;
+  font-weight: 700;
+}
+
+.location {
+  margin: 5px 0;
+  font-size: 14px;
+  opacity: 0.9;
+}
+
+.price {
+  margin: 10px 0 0 0;
+  font-size: 20px;
+  font-weight: 600;
+}
+
+/* Progress Steps */
+.progress-steps {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 20px;
+  background: #f8fafc;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin: 0 20px;
+  opacity: 0.5;
+  transition: all 0.3s ease;
+}
+
+.step.active {
+  opacity: 1;
+}
+
+.step-number {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: #e2e8f0;
+  color: #718096;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 16px;
+  margin-bottom: 8px;
+  transition: all 0.3s ease;
+}
+
+.step.active .step-number {
+  background: #667eea;
+  color: white;
+}
+
+.step-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: #4a5568;
+  text-align: center;
+}
+
+/* Booking Steps */
+.booking-step {
+  min-height: 500px;
+}
+
+.step-content {
+  padding: 30px;
+}
+
+.step-content h3 {
+  margin: 0 0 30px 0;
+  font-size: 24px;
+  color: #2d3748;
+  text-align: center;
+}
+
+.step-content h4 {
+  margin: 0 0 15px 0;
+  font-size: 18px;
+  color: #4a5568;
+}
+
+.step-content h5 {
+  margin: 0 0 10px 0;
+  font-size: 16px;
+  color: #718096;
+}
+
+/* Admin Configuration Display */
+.admin-config-info {
+  background: #f8fafc;
+  padding: 20px;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.admin-config-info h3 {
+  margin: 0 0 20px 0;
+  font-size: 18px;
+  color: #2d3748;
+}
+
+.config-section {
+  margin-bottom: 20px;
+}
+
+.config-section h4 {
+  margin: 0 0 10px 0;
+    font-size: 16px;
+  color: #4a5568;
+}
+
+.available-days {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.day-badge {
+    background: #667eea;
+    color: white;
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 14px;
+  font-weight: 600;
+  }
+
+.date-range {
+  margin: 0;
+  font-size: 16px;
+  color: #2d3748;
+  font-weight: 600;
+}
+
+.time-ranges-display {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.time-range-badge {
+  background: #48bb78;
+  color: white;
+  padding: 8px 16px;
+  border-radius: 20px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.time-slot-badge {
+  background: #38a169;
+  color: white;
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.time-slots-display {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.time-slot-badge {
+  background: #48bb78;
+  color: white;
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.booking-form {
+  padding: 30px;
+}
+
+.form-section {
+  margin-bottom: 30px;
+}
+
+.form-section h3 {
+  margin: 0 0 15px 0;
+  font-size: 18px;
+  color: #333;
+  font-weight: 600;
+}
+
+.form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  gap: 15px;
+  margin-bottom: 15px;
+}
+
+.form-row input {
+  padding: 12px;
+  border: 2px solid #e1e5e9;
+  border-radius: 8px;
+  font-size: 16px;
+  transition: border-color 0.2s ease;
+}
+
+.form-row input:focus {
+  outline: none;
+  border-color: #667eea;
+}
+
+input[type="date"] {
+  width: 100%;
+  padding: 12px;
+  border: 2px solid #e1e5e9;
+  border-radius: 8px;
+  font-size: 16px;
+  margin-bottom: 10px;
+}
+
+input[type="date"]:focus {
+  outline: none;
+  border-color: #667eea;
+}
+
+.help-text {
+  margin: 5px 0 0 0;
+  font-size: 14px;
+  color: #666;
+}
+
+/* Calendar Styles */
+.calendar-container {
+    background: white;
+    border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 20px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  }
+
+  .calendar-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  margin-bottom: 20px;
+  }
+
+  .nav-button {
+    background: #667eea;
+    color: white;
+    border: none;
+  width: 40px;
+  height: 40px;
+    border-radius: 50%;
+    cursor: pointer;
+  font-size: 18px;
+    font-weight: bold;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .nav-button:hover {
+    background: #5a67d8;
+    transform: scale(1.1);
+  }
+
+  .month-year {
+  font-size: 18px;
+    font-weight: 700;
+  color: #2d3748;
+    margin: 0;
+  }
+
+  .calendar-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 8px;
+  }
+
+  .calendar-weekdays {
+    display: contents;
+  }
+
+  .calendar-weekdays span {
+    text-align: center;
+    font-weight: 700;
+    color: #718096;
+    padding: 12px 4px;
+    font-size: 14px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .calendar-days {
+    display: contents;
+  }
+
+  .calendar-day {
+    aspect-ratio: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 2px solid transparent;
+    border-radius: 8px;
+    font-size: 16px;
+    font-weight: 600;
+    transition: all 0.2s ease;
+    cursor: default;
+    background: #f7fafc;
+    color: #4a5568;
+  }
+
+  .calendar-day.clickable {
+    cursor: pointer;
+    background: #edf2f7;
+    border-color: #e2e8f0;
+  }
+
+  .calendar-day.clickable:hover {
+    background: #667eea;
+    color: white;
+    border-color: #667eea;
+    transform: scale(1.05);
+  }
+
+  .calendar-day.available {
+    background: linear-gradient(135deg, #48bb78 0%, #38a169 100%);
+    border-color: #38a169;
+    color: white;
+    font-weight: 700;
+  }
+
+  .calendar-day.unavailable {
+    background: #e2e8f0;
+    border-color: #cbd5e0;
+    color: #a0aec0;
+    cursor: not-allowed;
+    opacity: 0.6;
+  }
+
+  .calendar-day.past {
+    background: #f7fafc;
+    border-color: #e2e8f0;
+    color: #a0aec0;
+    cursor: not-allowed;
+    opacity: 0.5;
+  }
+
+  .calendar-day.outside-range {
+    background: #fef5e7;
+    border-color: #f6e05e;
+    color: #b7791f;
+    cursor: not-allowed;
+    opacity: 0.7;
+  }
+
+.calendar-day.empty {
+  background: transparent;
+  border: none;
+  cursor: default;
+}
+
+/* Selection Summary */
+.selection-summary {
+  background: linear-gradient(135deg, #48bb78 0%, #38a169 100%);
+  color: white;
+  padding: 25px;
+  border-radius: 12px;
+  margin-top: 30px;
+  text-align: center;
+}
+
+.selection-summary h4 {
+  margin: 0 0 20px 0;
+  font-size: 20px;
+  color: white;
+}
+
+.selected-info {
+  display: flex;
+  justify-content: space-around;
+  margin-bottom: 25px;
+}
+
+.selected-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.selected-item .label {
+  font-size: 14px;
+  opacity: 0.9;
+  margin-bottom: 5px;
+}
+
+.selected-item .value {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.next-step-btn {
+  background: white;
+  color: #48bb78;
+  border: none;
+  padding: 15px 30px;
+  border-radius: 8px;
+  font-size: 18px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.next-step-btn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
+}
+
+.next-step-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* Form Actions */
+.form-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 30px;
+  gap: 20px;
+}
+
+.back-btn {
+  background: #e2e8f0;
+  color: #4a5568;
+  border: none;
+  padding: 12px 24px;
+  border-radius: 8px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.back-btn:hover {
+  background: #cbd5e0;
+  transform: translateY(-1px);
+}
+
+.book-button {
+  background: linear-gradient(135deg, #48bb78 0%, #38a169 100%);
+  color: white;
+  border: none;
+  padding: 15px 30px;
+  border-radius: 8px;
+  font-size: 18px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  flex: 1;
+}
+
+.book-button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 20px rgba(72, 187, 120, 0.3);
+}
+
+/* Loading Message */
+.loading-message {
+  text-align: center;
+  padding: 40px;
+  color: #4a5568;
+}
+
+.loading-message h3 {
+  margin: 0 0 15px 0;
+  font-size: 24px;
+  color: #667eea;
+}
+
+.time-ranges-header {
+  margin-bottom: 15px;
+  padding: 10px;
+  background: #f0f8ff;
+  border-radius: 8px;
+  border-left: 4px solid #667eea;
+}
+
+.time-ranges-header p {
+  margin: 0;
+  font-weight: 600;
+  color: #333;
+}
+
+.time-ranges {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 10px;
+  margin-bottom: 15px;
+}
+
+.time-range {
+  display: block;
+  cursor: pointer;
+}
+
+.time-range input[type="radio"] {
+  display: none;
+}
+
+.time-range-text {
+  display: block;
+  padding: 15px;
+  border: 2px solid #e1e5e9;
+  border-radius: 8px;
+  text-align: center;
+  font-weight: 600;
+  transition: all 0.2s ease;
+  background: white;
+  font-size: 16px;
+}
+
+.time-range input[type="radio"]:checked + .time-range-text {
+  background: #667eea;
+  color: white;
+  border-color: #667eea;
+}
+
+.time-range-text:hover {
+  border-color: #667eea;
+}
+
+.no-time-message {
+    text-align: center;
+  color: #666;
+  font-style: italic;
+  padding: 20px;
+  background: #f6f6f7;
+    border-radius: 8px;
+  border: 2px dashed #e1e5e9;
+  }
+
+  .services-list {
+    display: flex;
+    flex-direction: column;
+  gap: 10px;
+  }
+
+  .service-item {
+    display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 15px;
+  border: 2px solid #e1e5e9;
+  border-radius: 8px;
+    cursor: pointer;
+  transition: border-color 0.2s ease;
+}
+
+.service-item:hover {
+    border-color: #667eea;
+  }
+
+.service-item input[type="checkbox"]:checked + .service-name {
+  color: #667eea;
+  font-weight: 600;
+  }
+
+  .service-name {
+  font-weight: 500;
+  }
+
+  .service-price {
+    color: #48bb78;
+  font-weight: 600;
+  }
+
+  .price-summary {
+  background: #f6f6f7;
+  padding: 20px;
+  border-radius: 8px;
+  }
+
+  .price-item {
+    display: flex;
+    justify-content: space-between;
+  margin-bottom: 10px;
+  }
+
+  .price-divider {
+    height: 1px;
+  background: #e1e5e9;
+  margin: 10px 0;
+  }
+
+  .price-total {
+    display: flex;
+    justify-content: space-between;
+  font-size: 18px;
+    font-weight: 700;
+  color: #333;
+}
+
+textarea {
+  width: 100%;
+  padding: 12px;
+  border: 2px solid #e1e5e9;
+  border-radius: 8px;
+  font-size: 16px;
+  resize: vertical;
+  min-height: 80px;
+}
+
+textarea:focus {
+  outline: none;
+  border-color: #667eea;
+}
+
+.book-button {
+  width: 100%;
+    background: linear-gradient(135deg, #48bb78 0%, #38a169 100%);
+    color: white;
+    border: none;
+  padding: 16px;
+  border-radius: 8px;
+  font-size: 18px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.3s ease;
+  }
+
+.book-button:hover:not(:disabled) {
+    transform: translateY(-2px);
+  box-shadow: 0 4px 20px rgba(72, 187, 120, 0.3);
+  }
+
+.book-button:disabled {
+    background: #a0aec0;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+  }
+
+.booking-message {
+  padding: 30px;
+  }
+
+  .success-message {
+  text-align: center;
+    color: #48bb78;
+  }
+
+.error-message {
+  text-align: center;
+    color: #e53e3e;
+  }
+
+  .booking-summary {
+  background: #f6f6f7;
+    padding: 20px;
+  border-radius: 8px;
+    margin-top: 20px;
+    text-align: left;
+  }
+
+  .booking-summary p {
+    margin: 8px 0;
+  }
+
+.retry-button {
+    background: #667eea;
+    color: white;
+    border: none;
+    padding: 12px 24px;
+    border-radius: 8px;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+  margin-top: 15px;
+}
+
+.no-booking-message {
+  text-align: center;
+  padding: 40px;
+  color: #666;
+}
+
+.no-booking-message h3 {
+  color: #333;
+  margin-bottom: 15px;
+  }
+
+  /* Responsive Design */
+  @media (max-width: 768px) {
+  .simple-booking-widget {
+    margin: 10px;
+  }
+  
+  .booking-header {
+    padding: 20px;
+  }
+  
+  .booking-form {
+    padding: 20px;
+  }
+  
+  .form-row {
+      grid-template-columns: 1fr;
+    }
+
+  .time-slots {
+    grid-template-columns: repeat(auto-fit, minmax(80px, 1fr));
+    }
+  }
+</style>

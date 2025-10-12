@@ -19,27 +19,17 @@ if (
 
 const host = new URL(process.env.SHOPIFY_APP_URL || "http://localhost")
   .hostname;
-let hmrConfig;
 
-if (host === "localhost") {
-  hmrConfig = {
-    protocol: "ws",
-    host: "localhost",
-    port: 64999,
-    clientPort: 64999,
-  };
-} else {
-  hmrConfig = {
-    protocol: "wss",
-    host: host,
-    port: parseInt(process.env.FRONTEND_PORT) || 8002,
-    clientPort: 443,
-  };
-}
+let hmrConfig = {
+  protocol: host === "localhost" ? "ws" : "wss",
+  host: host === "localhost" ? "localhost" : host,
+  port: host === "localhost" ? 64999 : (parseInt(process.env.FRONTEND_PORT) || 8002),
+  clientPort: host === "localhost" ? 64999 : 443,
+};
 
 export default defineConfig({
   server: {
-    allowedHosts: [host, "7c6c48d0fcc3.ngrok-free.app", "*.ngrok-free.app", "*.ngrok.io"],
+    allowedHosts: [host, "e8aa19ec7ecb.ngrok-free.app", "*.ngrok-free.app", "*.ngrok.io"],
     cors: {
       preflightContinue: true,
     },

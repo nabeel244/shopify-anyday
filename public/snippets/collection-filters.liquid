@@ -1,0 +1,1036 @@
+{% comment %}
+  Collection Filter Sidebar
+  Usage: {% render 'collection-filters', collection: collection %}
+{% endcomment %}
+
+<div class="collection-filters-wrapper">
+  <div class="collection-filters">
+    <div class="filters-header">
+      <h3 class="filters-title">🔍 Filter Results</h3>
+      <button type="button" class="clear-filters-btn" onclick="clearAllFilters()" style="display: none;">
+        Clear All
+      </button>
+    </div>
+
+    <div id="filters-loading" class="filters-loading">
+      <div class="loading-spinner"></div>
+      <p>Loading filters...</p>
+    </div>
+
+    <div id="filters-content" class="filters-content" style="display: none;">
+      
+      <!-- Date Filter -->
+      <div class="filter-section">
+        <button type="button" class="filter-toggle" onclick="toggleFilterSection('date-filter')">
+          <span>📅 Date Available</span>
+          <span class="toggle-icon">▼</span>
+        </button>
+        <div id="date-filter" class="filter-options">
+          <input type="date" 
+                 id="filter-date" 
+                 class="filter-date-input"
+                 onchange="applyFilters()">
+          <small class="filter-help">Select a date to see available products</small>
+          <div id="date-count" class="filter-count"></div>
+        </div>
+      </div>
+
+      <!-- Time Filter -->
+      <div class="filter-section">
+        <button type="button" class="filter-toggle" onclick="toggleFilterSection('time-filter')">
+          <span>Time Slot</span>
+          <span class="toggle-icon">▼</span>
+        </button>
+        <div id="time-filter" class="filter-options collapsed">
+          <div id="time-slots-list" class="checkbox-list">
+            <!-- Populated by JavaScript -->
+          </div>
+        </div>
+      </div>
+
+      <!-- Services Filter -->
+      <div class="filter-section">
+        <button type="button" class="filter-toggle" onclick="toggleFilterSection('service-filter')">
+          <span>Services</span>
+          <span class="toggle-icon">▼</span>
+        </button>
+        <div id="service-filter" class="filter-options collapsed">
+          <div id="services-list" class="checkbox-list">
+            <!-- Populated by JavaScript -->
+          </div>
+        </div>
+      </div>
+
+      <!-- Price Filter -->
+      <div class="filter-section">
+        <button type="button" class="filter-toggle" onclick="toggleFilterSection('price-filter')">
+          <span> Price Range</span>
+          <span class="toggle-icon">▼</span>
+        </button>
+        <div id="price-filter" class="filter-options collapsed">
+          <div class="price-range-inputs">
+            <div class="price-input-group">
+              <label for="price-min">Min:</label>
+              <input type="number" 
+                     id="price-min" 
+                     class="price-input" 
+                     min="0" 
+                     placeholder="0"
+                     onchange="applyFilters()">
+            </div>
+            <div class="price-input-group">
+              <label for="price-max">Max:</label>
+              <input type="number" 
+                     id="price-max" 
+                     class="price-input" 
+                     min="0" 
+                     placeholder="999"
+                     onchange="applyFilters()">
+            </div>
+          </div>
+          <div class="price-range-slider">
+            <input type="range" 
+                   id="price-range" 
+                   min="0" 
+                   max="1000" 
+                   step="10"
+                   onchange="updatePriceInputs()">
+          </div>
+          <div id="price-range-display" class="price-range-display"></div>
+        </div>
+      </div>
+
+      <!-- Rating Filter -->
+      <div class="filter-section">
+        <button type="button" class="filter-toggle" onclick="toggleFilterSection('rating-filter')">
+          <span>Rating</span>
+          <span class="toggle-icon">▼</span>
+        </button>
+        <div id="rating-filter" class="filter-options collapsed">
+          <div class="rating-options">
+            <label class="filter-checkbox">
+              <input type="checkbox" value="5" onchange="toggleRatingFilter('5')">
+              <span>⭐⭐⭐⭐⭐ 5 Stars & Up</span>
+            </label>
+            <label class="filter-checkbox">
+              <input type="checkbox" value="4" onchange="toggleRatingFilter('4')">
+              <span>⭐⭐⭐⭐ 4 Stars & Up</span>
+            </label>
+            <label class="filter-checkbox">
+              <input type="checkbox" value="3" onchange="toggleRatingFilter('3')">
+              <span>⭐⭐⭐ 3 Stars & Up</span>
+            </label>
+            <label class="filter-checkbox">
+              <input type="checkbox" value="2" onchange="toggleRatingFilter('2')">
+              <span>⭐⭐ 2 Stars & Up</span>
+            </label>
+            <label class="filter-checkbox">
+              <input type="checkbox" value="1" onchange="toggleRatingFilter('1')">
+              <span>⭐ 1 Star & Up</span>
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <!-- City Filter -->
+      <div class="filter-section">
+        <button type="button" class="filter-toggle" onclick="toggleFilterSection('city-filter')">
+          <span>City</span>
+          <span class="toggle-icon">▼</span>
+        </button>
+        <div id="city-filter" class="filter-options collapsed">
+          <div id="cities-list" class="checkbox-list">
+            <!-- Populated by JavaScript -->
+          </div>
+        </div>
+      </div>
+
+      <!-- Active Filters Display -->
+      <div id="active-filters" class="active-filters" style="display: none;">
+        <h4>Active Filters:</h4>
+        <div id="active-filters-list"></div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script>
+// Collection Filters JavaScript
+const APP_BASE_URL = 'https://0bec595a76cf.ngrok-free.app'; // Update with your current ngrok URL
+let filtersData = null;
+let activeFilters = {
+  date: null,
+  times: [],
+  services: [],
+  priceMin: null,
+  priceMax: null,
+  ratings: [],
+  cities: []
+};
+
+// Initialize filters on page load
+document.addEventListener('DOMContentLoaded', function() {
+  console.log('🔍 Initializing collection filters...');
+  loadFiltersData();
+});
+
+async function loadFiltersData() {
+  const loadingEl = document.getElementById('filters-loading');
+  const contentEl = document.getElementById('filters-content');
+  
+  try {
+    console.log('🔄 Fetching filters data from API...');
+    
+    const response = await fetch(`${APP_BASE_URL}/api/collection-filters`, {
+      headers: {
+        'ngrok-skip-browser-warning': 'true'
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    console.log('✅ Filters data loaded:', data);
+
+    if (data.success) {
+      filtersData = data.filters;
+      populateFilters();
+      loadingEl.style.display = 'none';
+      contentEl.style.display = 'block';
+    } else {
+      throw new Error(data.error || 'Failed to load filters');
+    }
+
+  } catch (error) {
+    console.error('❌ Error loading filters:', error);
+    loadingEl.innerHTML = `
+      <p style="color: #dc3545;">Failed to load filters</p>
+      <button onclick="loadFiltersData()">Retry</button>
+    `;
+  }
+}
+
+function populateFilters() {
+  console.log('🔧 Populating filter options...');
+  
+  // Populate time slots
+  const timesList = document.getElementById('time-slots-list');
+  if (filtersData.times.length > 0) {
+    timesList.innerHTML = filtersData.times.map(time => `
+      <label class="filter-checkbox">
+        <input type="checkbox" 
+               value="${time}" 
+               onchange="toggleTimeFilter('${time}')">
+        <span>${formatTime(time)}</span>
+      </label>
+    `).join('');
+  } else {
+    timesList.innerHTML = '<p class="no-options">No time slots available</p>';
+  }
+
+  // Populate services
+  const servicesList = document.getElementById('services-list');
+  if (filtersData.services.length > 0) {
+    servicesList.innerHTML = filtersData.services.map(service => `
+      <label class="filter-checkbox">
+        <input type="checkbox" 
+               value="${service}" 
+               onchange="toggleServiceFilter('${service}')">
+        <span>${service}</span>
+      </label>
+    `).join('');
+  } else {
+    servicesList.innerHTML = '<p class="no-options">No services available</p>';
+  }
+
+  // Populate cities
+  const citiesList = document.getElementById('cities-list');
+  if (filtersData.cities && filtersData.cities.length > 0) {
+    citiesList.innerHTML = filtersData.cities.map(city => `
+      <label class="filter-checkbox">
+        <input type="checkbox" 
+               value="${city}" 
+               onchange="toggleCityFilter('${city}')">
+        <span>${city}</span>
+      </label>
+    `).join('');
+  } else {
+    citiesList.innerHTML = '<p class="no-options">No cities available</p>';
+  }
+
+  // Set price range
+  const priceMin = document.getElementById('price-min');
+  const priceMax = document.getElementById('price-max');
+  const priceRange = document.getElementById('price-range');
+  
+  priceMin.placeholder = `${filtersData.priceRange.min}`;
+  priceMax.placeholder = `${filtersData.priceRange.max}`;
+  priceRange.min = filtersData.priceRange.min;
+  priceRange.max = filtersData.priceRange.max;
+  priceRange.value = filtersData.priceRange.max;
+
+  console.log('✅ Filters populated successfully');
+}
+
+function toggleFilterSection(sectionId) {
+  const section = document.getElementById(sectionId);
+  const toggle = section.previousElementSibling.querySelector('.toggle-icon');
+  
+  if (section.classList.contains('collapsed')) {
+    section.classList.remove('collapsed');
+    toggle.textContent = '▲';
+  } else {
+    section.classList.add('collapsed');
+    toggle.textContent = '▼';
+  }
+}
+
+function toggleTimeFilter(time) {
+  const index = activeFilters.times.indexOf(time);
+  if (index > -1) {
+    activeFilters.times.splice(index, 1);
+  } else {
+    activeFilters.times.push(time);
+  }
+  applyFilters();
+}
+
+function toggleServiceFilter(service) {
+  const index = activeFilters.services.indexOf(service);
+  if (index > -1) {
+    activeFilters.services.splice(index, 1);
+  } else {
+    activeFilters.services.push(service);
+  }
+  applyFilters();
+}
+
+function toggleRatingFilter(rating) {
+  const index = activeFilters.ratings.indexOf(rating);
+  if (index > -1) {
+    activeFilters.ratings.splice(index, 1);
+  } else {
+    activeFilters.ratings.push(rating);
+  }
+  applyFilters();
+}
+
+function toggleCityFilter(city) {
+  const index = activeFilters.cities.indexOf(city);
+  if (index > -1) {
+    activeFilters.cities.splice(index, 1);
+  } else {
+    activeFilters.cities.push(city);
+  }
+  applyFilters();
+}
+
+function applyFilters() {
+  console.log('========================================');
+  console.log('🔍 APPLYING FILTERS');
+  console.log('========================================');
+  
+  // Get filter values
+  const selectedDate = document.getElementById('filter-date').value;
+  const priceMin = parseFloat(document.getElementById('price-min').value) || null;
+  const priceMax = parseFloat(document.getElementById('price-max').value) || null;
+  
+  activeFilters.date = selectedDate || null;
+  activeFilters.priceMin = priceMin;
+  activeFilters.priceMax = priceMax;
+  
+  console.log('📋 Current Filters:', {
+    date: activeFilters.date,
+    times: activeFilters.times,
+    services: activeFilters.services,
+    priceMin: activeFilters.priceMin,
+    priceMax: activeFilters.priceMax,
+    ratings: activeFilters.ratings,
+    cities: activeFilters.cities
+  });
+
+  // Filter products
+  const products = document.querySelectorAll('[data-product-id]');
+  console.log(`\n📦 Found ${products.length} products on page`);
+  
+  if (products.length === 0) {
+    console.warn('⚠️ No products with data-product-id attribute found!');
+    console.warn('Make sure your product cards have: data-product-id="{{ product.id }}"');
+    return;
+  }
+  
+  let visibleCount = 0;
+  let filterResults = [];
+
+  products.forEach((product, index) => {
+    const productId = product.dataset.productId;
+    
+    // Normalize product IDs - extract numeric ID from Shopify GID format
+    const normalizeId = (id) => {
+      if (!id) return '';
+      // Extract numeric ID from gid://shopify/Product/123456 or return as-is
+      const match = id.match(/\/(\d+)$/);
+      return match ? match[1] : id.toString();
+    };
+    
+    const normalizedPageId = normalizeId(productId);
+    
+    console.log(`\n--- Product ${index + 1}: ${productId} (normalized: ${normalizedPageId}) ---`);
+    
+    // Don't try to match if productId is empty/undefined
+    if (!productId || !normalizedPageId) {
+      console.log('⚠️ Product ID is missing! Check your data-product-id attribute.');
+      product.style.display = '';
+      filterResults.push({
+        productId: 'MISSING',
+        status: 'no-id',
+        visible: true
+      });
+      return;
+    }
+    
+    const productData = filtersData.products.find(p => {
+      const normalizedConfigId = normalizeId(p.productId);
+      return normalizedConfigId === normalizedPageId || 
+             p.productId === productId || 
+             p.productId.includes(productId);
+    });
+
+    if (!productData) {
+      console.log('⚠️ No config data found for this product - showing by default');
+      product.style.display = '';
+      filterResults.push({
+        productId,
+        status: 'no-config',
+        visible: true
+      });
+      return;
+    }
+    
+    console.log('📊 Product Data:', {
+      title: productData.title,
+      price: productData.price,
+      dateRange: productData.dateRange,
+      availableDays: productData.availableDays,
+      timeSlots: productData.timeSlots,
+      services: productData.services
+    });
+
+    let shouldShow = true;
+    let filterReasons = [];
+
+    // ========== DATE & TIME FILTER ==========
+    if (activeFilters.date) {
+      console.log(`\n🗓️ Checking DATE filter: ${activeFilters.date}`);
+      
+      if (productData.dateRange.start && productData.dateRange.end) {
+        const selectedDate = new Date(activeFilters.date);
+        const startDate = new Date(productData.dateRange.start);
+        const endDate = new Date(productData.dateRange.end);
+        
+        console.log(`  Range: ${productData.dateRange.start} to ${productData.dateRange.end}`);
+        
+        // Check if date is in range
+        if (selectedDate < startDate || selectedDate > endDate) {
+          shouldShow = false;
+          filterReasons.push(`Date ${activeFilters.date} is outside booking range`);
+          console.log(`  ❌ Date outside range`);
+        } else {
+          console.log(`  ✅ Date within range`);
+          
+          // Check if day of week is available
+          const dayName = selectedDate.toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase();
+          console.log(`  Day of week: ${dayName}`);
+          console.log(`  Available days: ${productData.availableDays.join(', ')}`);
+          
+          if (!productData.availableDays.includes(dayName)) {
+            shouldShow = false;
+            filterReasons.push(`${dayName} is not an available day`);
+            console.log(`  ❌ Day not available`);
+          } else {
+            console.log(`  ✅ Day is available`);
+          }
+        }
+      } else {
+        console.log(`  ⚠️ No date range configured - hiding product`);
+        shouldShow = false;
+        filterReasons.push('No date range configured');
+      }
+    }
+
+    // ========== TIME FILTER ==========
+    if (shouldShow && activeFilters.times.length > 0) {
+      console.log(`\n⏰ Checking TIME filter: ${activeFilters.times.join(', ')}`);
+      console.log(`  Product time slots: ${productData.timeSlots.join(', ')}`);
+      
+      const hasMatchingTime = activeFilters.times.some(time => {
+        const match = productData.timeSlots.includes(time);
+        console.log(`  - ${time}: ${match ? '✅ Match' : '❌ No match'}`);
+        return match;
+      });
+      
+      if (!hasMatchingTime) {
+        shouldShow = false;
+        filterReasons.push('No matching time slots');
+        console.log(`  ❌ No time slots match`);
+      } else {
+        console.log(`  ✅ Has matching time slot`);
+      }
+    }
+
+    // ========== SERVICE FILTER ==========
+    if (shouldShow && activeFilters.services.length > 0) {
+      console.log(`\n🎭 Checking SERVICE filter: ${activeFilters.services.join(', ')}`);
+      console.log(`  Product services: ${productData.services.join(', ')}`);
+      
+      const hasMatchingService = activeFilters.services.some(service => {
+        const match = productData.services.includes(service);
+        console.log(`  - ${service}: ${match ? '✅ Match' : '❌ No match'}`);
+        return match;
+      });
+      
+      if (!hasMatchingService) {
+        shouldShow = false;
+        filterReasons.push('No matching services');
+        console.log(`  ❌ No services match`);
+      } else {
+        console.log(`  ✅ Has matching service`);
+      }
+    }
+
+    // ========== PRICE FILTER ==========
+    if (shouldShow && (activeFilters.priceMin !== null || activeFilters.priceMax !== null)) {
+      console.log(`\n💰 Checking PRICE filter: $${activeFilters.priceMin || 0} - $${activeFilters.priceMax || '∞'}`);
+      console.log(`  Product price: $${productData.price}`);
+      
+      const price = productData.price;
+      if (activeFilters.priceMin !== null && price < activeFilters.priceMin) {
+        shouldShow = false;
+        filterReasons.push(`Price $${price} below minimum $${activeFilters.priceMin}`);
+        console.log(`  ❌ Below minimum`);
+      } else if (activeFilters.priceMax !== null && price > activeFilters.priceMax) {
+        shouldShow = false;
+        filterReasons.push(`Price $${price} above maximum $${activeFilters.priceMax}`);
+        console.log(`  ❌ Above maximum`);
+      } else {
+        console.log(`  ✅ Within price range`);
+      }
+    }
+
+    // ========== RATING FILTER ==========
+    if (shouldShow && activeFilters.ratings.length > 0) {
+      console.log(`\n⭐ Checking RATING filter: ${activeFilters.ratings.join(', ')}`);
+      console.log(`  Product rating: ${productData.rating || 'No rating'}`);
+      
+      const productRating = parseFloat(productData.rating) || 0;
+      const hasMatchingRating = activeFilters.ratings.some(rating => {
+        const minRating = parseInt(rating);
+        const match = productRating >= minRating;
+        console.log(`  - ${rating}+ stars: ${match ? '✅ Match' : '❌ No match'} (product: ${productRating})`);
+        return match;
+      });
+      
+      if (!hasMatchingRating) {
+        shouldShow = false;
+        filterReasons.push('No matching rating');
+        console.log(`  ❌ No ratings match`);
+      } else {
+        console.log(`  ✅ Has matching rating`);
+      }
+    }
+
+    // ========== CITY FILTER ==========
+    if (shouldShow && activeFilters.cities.length > 0) {
+      console.log(`\n🏙️ Checking CITY filter: ${activeFilters.cities.join(', ')}`);
+      console.log(`  Product city: ${productData.city || 'No city'}`);
+      
+      // If product has no city, hide it when city filter is active
+      if (!productData.city) {
+        shouldShow = false;
+        filterReasons.push('Product has no city configured');
+        console.log(`  ❌ Product has no city`);
+      } else {
+        const hasMatchingCity = activeFilters.cities.some(city => {
+          const match = productData.city.toLowerCase().trim() === city.toLowerCase().trim();
+          console.log(`  - ${city}: ${match ? '✅ Match' : '❌ No match'}`);
+          return match;
+        });
+        
+        if (!hasMatchingCity) {
+          shouldShow = false;
+          filterReasons.push('No matching city');
+          console.log(`  ❌ No cities match`);
+        } else {
+          console.log(`  ✅ Has matching city`);
+        }
+      }
+    }
+
+    // Show/hide product
+    product.style.display = shouldShow ? '' : 'none';
+    if (shouldShow) visibleCount++;
+    
+    const result = shouldShow ? '✅ SHOW' : '❌ HIDE';
+    console.log(`\n${result} this product`);
+    if (!shouldShow && filterReasons.length > 0) {
+      console.log(`Reasons: ${filterReasons.join(', ')}`);
+    }
+    
+    filterResults.push({
+      productId,
+      title: productData.title,
+      visible: shouldShow,
+      reasons: filterReasons
+    });
+  });
+
+  console.log('\n========================================');
+  console.log('📊 FILTER RESULTS SUMMARY');
+  console.log('========================================');
+  console.log(`Total products: ${products.length}`);
+  console.log(`Visible: ${visibleCount}`);
+  console.log(`Hidden: ${products.length - visibleCount}`);
+  console.log('\nDetailed Results:', filterResults);
+  console.log('========================================\n');
+  
+  updateActiveFiltersDisplay();
+  updateClearButton();
+}
+
+function updateActiveFiltersDisplay() {
+  const activeFiltersEl = document.getElementById('active-filters');
+  const activeFiltersList = document.getElementById('active-filters-list');
+  
+  let hasFilters = false;
+  let filtersHTML = '';
+
+  if (activeFilters.date) {
+    hasFilters = true;
+    filtersHTML += `
+      <span class="active-filter-tag">
+        📅 ${new Date(activeFilters.date).toLocaleDateString()}
+        <button onclick="removeFilter('date')">×</button>
+      </span>
+    `;
+  }
+
+  activeFilters.times.forEach(time => {
+    hasFilters = true;
+    filtersHTML += `
+      <span class="active-filter-tag">
+        ⏰ ${formatTime(time)}
+        <button onclick="toggleTimeFilter('${time}'); applyFilters()">×</button>
+      </span>
+    `;
+  });
+
+  activeFilters.services.forEach(service => {
+    hasFilters = true;
+    filtersHTML += `
+      <span class="active-filter-tag">
+        🎭 ${service}
+        <button onclick="toggleServiceFilter('${service}'); applyFilters()">×</button>
+      </span>
+    `;
+  });
+
+  if (activeFilters.priceMin !== null || activeFilters.priceMax !== null) {
+    hasFilters = true;
+    const priceText = `${activeFilters.priceMin || 0} - ${activeFilters.priceMax || '∞'}`;
+    filtersHTML += `
+      <span class="active-filter-tag">
+        💰 $${priceText}
+        <button onclick="removeFilter('price')">×</button>
+      </span>
+    `;
+  }
+
+  activeFilters.ratings.forEach(rating => {
+    hasFilters = true;
+    filtersHTML += `
+      <span class="active-filter-tag">
+        ⭐ ${rating}+ Stars
+        <button onclick="toggleRatingFilter('${rating}'); applyFilters()">×</button>
+      </span>
+    `;
+  });
+
+  activeFilters.cities.forEach(city => {
+    hasFilters = true;
+    filtersHTML += `
+      <span class="active-filter-tag">
+        🏙️ ${city}
+        <button onclick="toggleCityFilter('${city}'); applyFilters()">×</button>
+      </span>
+    `;
+  });
+
+  activeFiltersEl.style.display = hasFilters ? 'block' : 'none';
+  activeFiltersList.innerHTML = filtersHTML;
+}
+
+function updateClearButton() {
+  const clearBtn = document.querySelector('.clear-filters-btn');
+  const hasFilters = activeFilters.date || 
+                     activeFilters.times.length > 0 || 
+                     activeFilters.services.length > 0 ||
+                     activeFilters.priceMin !== null ||
+                     activeFilters.priceMax !== null ||
+                     activeFilters.ratings.length > 0 ||
+                     activeFilters.cities.length > 0;
+  
+  clearBtn.style.display = hasFilters ? 'inline-block' : 'none';
+}
+
+function removeFilter(type) {
+  if (type === 'date') {
+    activeFilters.date = null;
+    document.getElementById('filter-date').value = '';
+  } else if (type === 'price') {
+    activeFilters.priceMin = null;
+    activeFilters.priceMax = null;
+    document.getElementById('price-min').value = '';
+    document.getElementById('price-max').value = '';
+  }
+  applyFilters();
+}
+
+function clearAllFilters() {
+  activeFilters = {
+    date: null,
+    times: [],
+    services: [],
+    priceMin: null,
+    priceMax: null,
+    ratings: [],
+    cities: []
+  };
+
+  document.getElementById('filter-date').value = '';
+  document.getElementById('price-min').value = '';
+  document.getElementById('price-max').value = '';
+  
+  document.querySelectorAll('.filter-checkbox input').forEach(cb => cb.checked = false);
+  
+  applyFilters();
+}
+
+function formatTime(time) {
+  // Format time from 24h to 12h format
+  const [hours, minutes] = time.split(':');
+  const hour = parseInt(hours);
+  const ampm = hour >= 12 ? 'PM' : 'AM';
+  const hour12 = hour % 12 || 12;
+  return `${hour12}:${minutes} ${ampm}`;
+}
+
+function updatePriceInputs() {
+  const range = document.getElementById('price-range');
+  document.getElementById('price-max').value = range.value;
+  applyFilters();
+}
+</script>
+
+<style>
+.collection-filters-wrapper {
+  width: 100%;
+  max-width: 300px;
+}
+
+.collection-filters {
+  background: #fff;
+  border: 1px solid #e5e5e5;
+  border-radius: 8px;
+  padding: 20px;
+  position: sticky;
+  top: 20px;
+}
+
+.filters-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  padding-bottom: 15px;
+  border-bottom: 2px solid #f0f0f0;
+}
+
+.filters-title {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #333;
+}
+
+.clear-filters-btn {
+  background: #dc3545;
+  color: white;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 4px;
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.clear-filters-btn:hover {
+  background: #c82333;
+}
+
+.filters-loading {
+  text-align: center;
+  padding: 40px 20px;
+}
+
+.loading-spinner {
+  border: 3px solid #f3f3f3;
+  border-top: 3px solid #007bff;
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  animation: spin 1s linear infinite;
+  margin: 0 auto 15px;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.filter-section {
+  margin-bottom: 20px;
+  border-bottom: 1px solid #e5e5e5;
+  padding-bottom: 15px;
+}
+
+.filter-toggle {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: none;
+  border: none;
+  padding: 10px 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: #333;
+  cursor: pointer;
+  text-align: left;
+}
+
+.filter-toggle:hover {
+  color: #007bff;
+}
+
+.toggle-icon {
+  color: #666;
+  font-size: 0.875rem;
+}
+
+.filter-options {
+  padding: 15px 0 5px;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.filter-options.collapsed {
+  display: none;
+}
+
+.filter-date-input {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 0.9375rem;
+  margin-bottom: 8px;
+}
+
+.filter-help {
+  display: block;
+  color: #666;
+  font-size: 0.8125rem;
+  margin-top: 5px;
+}
+
+.checkbox-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.filter-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.filter-checkbox:hover {
+  background: #f8f9fa;
+}
+
+.filter-checkbox input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+}
+
+.price-range-inputs {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 15px;
+}
+
+.price-input-group {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.price-input-group label {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #666;
+}
+
+.price-input {
+  width: 100%;
+  padding: 8px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 0.9375rem;
+}
+
+.price-range-slider {
+  margin-bottom: 10px;
+}
+
+.price-range-slider input[type="range"] {
+  width: 100%;
+}
+
+.active-filters {
+  margin-top: 20px;
+  padding-top: 15px;
+  border-top: 2px solid #f0f0f0;
+}
+
+.active-filters h4 {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  margin: 0 0 10px;
+  color: #333;
+}
+
+#active-filters-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.active-filter-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #007bff;
+  color: white;
+  padding: 6px 10px;
+  border-radius: 20px;
+  font-size: 0.8125rem;
+  font-weight: 500;
+}
+
+.active-filter-tag button {
+  background: none;
+  border: none;
+  color: white;
+  font-size: 1.25rem;
+  line-height: 1;
+  padding: 0;
+  margin-left: 4px;
+  cursor: pointer;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.2s;
+}
+
+.active-filter-tag button:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.no-options {
+  color: #999;
+  font-size: 0.875rem;
+  font-style: italic;
+  padding: 10px;
+  text-align: center;
+}
+
+.rating-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+@media (max-width: 768px) {
+  .collection-filters-wrapper {
+    max-width: 100%;
+    margin-bottom: 20px;
+  }
+
+  .collection-filters {
+    position: static;
+  }
+}
+
+/* Simple fix for product grid - no gaps when filtered */
+.collection .grid,
+.product-grid,
+ul.grid {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  gap: 20px !important;
+}
+
+/* Desktop - 4 products per row */
+@media (min-width: 990px) {
+  .collection .grid > *,
+  .product-grid > *,
+  ul.grid > li {
+    flex: 0 0 calc(25% - 15px) !important;
+    max-width: calc(25% - 15px) !important;
+  }
+}
+
+/* Tablet - 2 products per row */
+@media (max-width: 989px) and (min-width: 750px) {
+  .collection .grid > *,
+  .product-grid > *,
+  ul.grid > li {
+    flex: 0 0 calc(50% - 10px) !important;
+    max-width: calc(50% - 10px) !important;
+  }
+}
+
+/* Mobile - 1 product per row */
+@media (max-width: 749px) {
+  .collection .grid > *,
+  .product-grid > *,
+  ul.grid > li {
+    flex: 0 0 100% !important;
+    max-width: 100% !important;
+  }
+}
+</style>

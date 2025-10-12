@@ -30,9 +30,19 @@ export async function loader({ request }) {
       return json({ error: 'Product ID is required' }, { status: 400 });
     }
 
-    const configuration = await prisma.productBookingConfig.findUnique({
+    // Handle both formats: just the ID number or full Shopify GraphQL ID
+    const fullProductId = productId.startsWith('gid://') ? productId : `gid://shopify/Product/${productId}`;
+    const numericProductId = productId.startsWith('gid://') ? productId.split('/').pop() : productId;
+
+    console.log('🔍 Searching for product ID:', fullProductId);
+    console.log('🔍 Numeric ID:', numericProductId);
+
+    const configuration = await prisma.productBookingConfig.findFirst({
       where: { 
-        productId,
+        OR: [
+          { productId: fullProductId },
+          { productId: numericProductId }
+        ],
         isActive: true
       }
     });
@@ -46,8 +56,10 @@ export async function loader({ request }) {
 
     // Parse the stored JSON data
     const availableDays = JSON.parse(configuration.availableDays);
-    const timeSlots = JSON.parse(configuration.timeSlots);
+    const timeSlots = JSON.parse(configuration.timeSlots || '[]');
+    const timeRanges = JSON.parse(configuration.timeRanges || '[]');
     const disabledDates = configuration.disabledDates ? JSON.parse(configuration.disabledDates) : [];
+    const services = configuration.services ? JSON.parse(configuration.services) : [];
 
     // Generate time slots from range if available
     let finalTimeSlots = timeSlots;
@@ -66,14 +78,19 @@ export async function loader({ request }) {
         productId: configuration.productId,
         productTitle: configuration.productTitle,
         productPrice: configuration.productPrice,
+        city: configuration.city,
         availableDays,
         timeSlots: finalTimeSlots,
+        timeRanges,
         timeRangeStart: configuration.timeRangeStart,
         timeRangeEnd: configuration.timeRangeEnd,
         slotDuration: configuration.slotDuration,
         disabledDates,
+        services,
         duration: configuration.duration,
-        maxBookings: configuration.maxBookings
+        maxBookings: configuration.maxBookings,
+        bookingStartDate: configuration.bookingStartDate,
+        bookingEndDate: configuration.bookingEndDate
       }
     });
   } catch (error) {

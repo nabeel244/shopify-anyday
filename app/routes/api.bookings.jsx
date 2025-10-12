@@ -11,8 +11,19 @@ export async function action({ request }) {
   }
 
   try {
-    const { bookingData } = await request.formData();
-    const data = JSON.parse(bookingData);
+    // Handle both JSON and FormData requests
+    let data;
+    const contentType = request.headers.get('content-type');
+    
+    if (contentType && contentType.includes('application/json')) {
+      // Handle JSON request (from frontend widget)
+      const requestBody = await request.json();
+      data = requestBody.bookingData || requestBody;
+    } else {
+      // Handle FormData request (from admin panel)
+      const formData = await request.formData();
+      data = JSON.parse(formData.get('bookingData'));
+    }
 
     // Validate required fields
     const requiredFields = ['firstName', 'lastName', 'email', 'phone', 'productId', 'productTitle', 'bookingDate', 'startTime', 'endTime'];
@@ -21,6 +32,12 @@ export async function action({ request }) {
         return json({ error: `${field} is required` }, { status: 400 });
       }
     }
+
+    // Log the booking data for debugging
+    console.log('Booking data received:', {
+      ...data,
+      selectedServices: data.selectedServices || []
+    });
 
     // Check if user already exists, if not create them
     let user = await prisma.user.findUnique({
@@ -133,7 +150,15 @@ export async function action({ request }) {
 
   } catch (error) {
     console.error('Failed to create booking:', error);
-    return json({ error: 'Failed to create booking' }, { status: 500 });
+    console.error('Error details:', {
+      message: error.message,
+      code: error.code,
+      meta: error.meta
+    });
+    return json({ 
+      error: 'Failed to create booking',
+      details: error.message 
+    }, { status: 500 });
   }
 }
 

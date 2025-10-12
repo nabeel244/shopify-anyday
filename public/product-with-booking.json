@@ -1,0 +1,177 @@
+/*
+ * ------------------------------------------------------------
+ * IMPORTANT: The contents of this file are auto-generated.
+ *
+ * This file may be updated by the Shopify admin theme editor
+ * or related systems. Please exercise caution as any changes
+ * made to this file may be overwritten.
+ * ------------------------------------------------------------
+ */
+{
+  "sections": {
+    "main": {
+      "type": "main-product",
+      "blocks": {
+        "vendor": {
+          "type": "text",
+          "settings": {
+            "text": "{{ product.vendor }}",
+            "text_style": "uppercase"
+          }
+        },
+        "title": {
+          "type": "title",
+          "settings": {}
+        },
+        "price": {
+          "type": "price",
+          "settings": {}
+        },
+        "variant_picker": {
+          "type": "variant_picker",
+          "settings": {
+            "picker_type": "button"
+          }
+        },
+        "quantity_selector": {
+          "type": "quantity_selector",
+          "disabled": true,
+          "settings": {}
+        },
+        "booking_widget": {
+          "type": "booking-widget",
+          "settings": {
+            "duration": "Full day service (8 hours)",
+            "duration_minutes": 480,
+            "info_title": "What's included:",
+            "booking_description": "Choose your preferred date and time. You'll receive instant confirmation via email.",
+            "include_1": "Instant booking confirmation",
+            "include_2": "Email notifications",
+            "include_3": "Easy rescheduling",
+            "include_4": "Professional service",
+            "time_slots": "09:00, 10:00, 11:00, 12:00, 13:00, 14:00, 15:00, 16:00, 17:00"
+          }
+        },
+        "buy_buttons": {
+          "type": "buy_buttons",
+          "settings": {
+            "show_dynamic_checkout": false,
+            "show_gift_card_recipient": true
+          }
+        },
+        "description": {
+          "type": "description",
+          "settings": {}
+        },
+        "share": {
+          "type": "share",
+          "settings": {
+            "share_label": "Share"
+          }
+        },
+        "judge_me_reviews_preview_badge_TVmdUy": {
+          "type": "shopify://apps/judge-me-reviews/blocks/preview_badge/61ccd3b1-a9f2-4160-9fe9-4fec8413e5d8",
+          "settings": {}
+        }
+      },
+      "block_order": [
+        "vendor",
+        "title",
+        "price",
+        "variant_picker",
+        "quantity_selector",
+        "booking_widget",
+        "buy_buttons",
+        "description",
+        "share",
+        "judge_me_reviews_preview_badge_TVmdUy"
+      ],
+      "settings": {
+        "enable_sticky_info": true,
+        "media_size": "large",
+        "constrain_to_viewport": true,
+        "media_fit": "cover",
+        "gallery_layout": "stacked",
+        "media_position": "left",
+        "image_zoom": "lightbox",
+        "mobile_thumbnails": "hide",
+        "hide_variants": true,
+        "enable_video_looping": false,
+        "padding_top": 36,
+        "padding_bottom": 12
+      }
+    },
+    "multicolumn_wiyVhA": {
+      "type": "multicolumn",
+      "blocks": {
+        "column_DjrMp3": {
+          "type": "column",
+          "settings": {
+            "title": "პირობები",
+            "text": "<p>ვაუჩერის შეძენის შემთხვევაში ადგილზე გადაიხდით დანაზოგით გათვალისწინებულ თანხას თქვენთვის სასურველ პაკეტზე<br/><br/>შეთავაზებაში შედის: მხიარული დაბადების დღე ბატუტ პარკში `ჰოპლა` 10, 15, 20, 25, 30 და მეტ ბავშვზე</p><p><strong>ორშაბათი-პარასკევი:</strong></p><ul><li>10 ბავშვიანი პაკეტი - 480 ლარი 960 ლარის ნაცვლად (პრომო კოდი 10 ლარი)</li><li>15 ბავშვიანი პაკეტი - 550 ლარი 990 ლარის ნაცვლად (პრომო კოდი 10 ლარი)</li><li>20 ბავშვიანი პაკეტი - 660 ლარი 1090 ლარის ნაცვლად (პრომო კოდი 10 ლარი)</li><li>25 ბავშვიანი პაკეტი - 770 ლარი 1190 ლარის ნაცვლად (პრომო კოდი 10 ლარი)</li><li>30 ბავშვიანი პაკეტი - 880 ლარი 1290 ლარის ნაცვლად (პრომო კოდი 10 ლარი)</li></ul><p>1 დამატებითი ბავშვის ღირებულება - 28 ლარი</p><p><strong>შაბათი, კვირა</strong></p><ul><li>10 ბავშვიანი პაკეტი - 580 ლარი 1060 ლარის ნაცვლად (პრომო კოდი 10 ლარი)</li><li>15 ბავშვიანი პაკეტი - 650 ლარი 1090 ლარის ნაცვლად (პრომო კოდი 10 ლარი)</li><li>20 ბავშვიანი პაკეტი 760 ლარი 1190 ლარის ნაცვლად (პრომო კოდი 10 ლარი)</li><li> 25 ბავშვიანი პაკეტი 870 ლარი 1290 ლარის ნაცვლად (პრომო კოდი 10 ლარი)</li><li> 30 ბავშვიანი პაკეტი 980 ლარი 1390 ლარის ნაცვლად (პრომო კოდი 10 ლარი)</li></ul><p>1 დამატებითი ბავშვის ღირებულება - 33 ლარი</p><p>კვება ბავშვებისთვის:</p><ul><li>ხაჭაპური<br/></li><li>პიცა<br/></li><li>ფრი<br/></li><li>ბელგიური ვაფლი შოკოლადით<br/></li><li>კოკა-კოლა<br/></li><li>კვება მშობლებისთვის:<br/></li><li>ხაჭაპური იმერული (8 მაჭრიანი)</li><li>პიცა პეპერონი (8 ნაჭრიანი)</li></ul><p>გასართობი პროგრამა:<br/></p><ul><li>წამყვანი, ანიმატორი, დიჯეი<br/></li><li>ფოტოგადაღება (სრული პროგრამის განმავლობაში)<br/></li><li>ანიმაციური გმირი<br/></li><li>სპეციალური თამაშები და აქტივობები (ასაკის მიხედვით)<br/></li><li>ტორტის ცერემონიალი<br/></li><li>საპნის ბუშტების წვიმა<br/></li><li>ლაბირინთები (7 წლამდე ასაკის ბავშვებისთვის)<br/></li><li>ბატუტები<br/></li></ul><p><br/><strong>პროგრამის საერთო ხანგრძლივობა: 2 საათი</strong></p><p><strong><br/>1 ვაუჩერით დანაზოგს იღებთ ერთჯერადად!<br/><br/>დანაზოგის მისაღებად საჭიროა ვაუჩერის შეძენა და ინფრომაციის სწორად შეყვანა!</strong></p>",
+            "link_label": "",
+            "link": ""
+          }
+        }
+      },
+      "block_order": [
+        "column_DjrMp3"
+      ],
+      "settings": {
+        "title": "",
+        "heading_size": "h1",
+        "image_width": "full",
+        "image_ratio": "adapt",
+        "columns_desktop": 3,
+        "column_alignment": "left",
+        "background_style": "primary",
+        "button_label": "",
+        "button_link": "",
+        "color_scheme": "",
+        "columns_mobile": "1",
+        "swipe_on_mobile": false,
+        "padding_top": 36,
+        "padding_bottom": 36
+      }
+    },
+    "related-products": {
+      "type": "related-products",
+      "settings": {
+        "heading": "<strong>ᲐᲡᲔᲕᲔ ᲘᲮᲘᲚᲔᲗ</strong>",
+        "heading_size": "h2",
+        "products_to_show": 4,
+        "columns_desktop": 4,
+        "color_scheme": "scheme-1",
+        "image_ratio": "square",
+        "image_shape": "default",
+        "show_secondary_image": true,
+        "show_vendor": false,
+        "show_rating": false,
+        "columns_mobile": "2",
+        "padding_top": 36,
+        "padding_bottom": 28
+      }
+    },
+    "171130894760728e82": {
+      "type": "apps",
+      "blocks": {
+        "judge_me_reviews_review_widget_3bB9Bg": {
+          "type": "shopify://apps/judge-me-reviews/blocks/review_widget/61ccd3b1-a9f2-4160-9fe9-4fec8413e5d8",
+          "settings": {}
+        }
+      },
+      "block_order": [
+        "judge_me_reviews_review_widget_3bB9Bg"
+      ],
+      "settings": {
+        "include_margins": true
+      }
+    }
+  },
+  "order": [
+    "main",
+    "multicolumn_wiyVhA",
+    "related-products",
+    "171130894760728e82"
+  ]
+}

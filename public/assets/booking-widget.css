@@ -1,0 +1,281 @@
+/* Booking Widget Styles for Shopify 2.0 Themes */
+
+.booking-widget-section {
+  max-width: 100%;
+  margin: 20px 0;
+  padding: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+.booking-card {
+  border: 1px solid #e1e5e9;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  overflow: hidden;
+}
+
+.booking-header {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  padding: 20px;
+  text-align: center;
+}
+
+.booking-header h3 {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 600;
+}
+
+.booking-content {
+  padding: 20px;
+}
+
+.booking-summary {
+  background: #f8f9fa;
+  border-radius: 6px;
+  padding: 15px;
+  margin-bottom: 20px;
+}
+
+.booking-summary h4 {
+  margin: 0 0 10px 0;
+  color: #333;
+  font-size: 1.1rem;
+}
+
+.summary-row {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.summary-row:last-child {
+  margin-bottom: 0;
+}
+
+.price-badge {
+  background: #28a745;
+  color: white;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-weight: 600;
+  font-size: 1.1rem;
+}
+
+.form-group {
+  margin-bottom: 20px;
+}
+
+.form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 15px;
+}
+
+.form-row.single {
+  grid-template-columns: 1fr;
+}
+
+label {
+  display: block;
+  margin-bottom: 5px;
+  font-weight: 500;
+  color: #333;
+}
+
+.required {
+  color: #dc3545;
+}
+
+input, select, textarea {
+  width: 100%;
+  padding: 12px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 14px;
+  transition: border-color 0.3s ease;
+  box-sizing: border-box;
+}
+
+input:focus, select:focus, textarea:focus {
+  outline: none;
+  border-color: #667eea;
+  box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.2);
+}
+
+.error {
+  color: #dc3545;
+  font-size: 12px;
+  margin-top: 5px;
+}
+
+.booking-button {
+  width: 100%;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: none;
+  padding: 15px;
+  border-radius: 6px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.2s ease;
+}
+
+.booking-button:hover {
+  transform: translateY(-2px);
+}
+
+.booking-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.booking-button.loading {
+  position: relative;
+  color: transparent;
+}
+
+.booking-button.loading::after {
+  content: '';
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  top: 50%;
+  left: 50%;
+  margin-left: -10px;
+  margin-top: -10px;
+  border: 2px solid #ffffff;
+  border-radius: 50%;
+  border-top-color: transparent;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.success-message {
+  background: #d4edda;
+  color: #155724;
+  padding: 15px;
+  border-radius: 6px;
+  margin-bottom: 20px;
+  border: 1px solid #c3e6cb;
+}
+
+.error-message {
+  background: #f8d7da;
+  color: #721c24;
+  padding: 15px;
+  border-radius: 6px;
+  margin-bottom: 20px;
+  border: 1px solid #f5c6cb;
+}
+
+.toggle-form {
+  background: #6c757d;
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 4px;
+  cursor: pointer;
+  margin-bottom: 20px;
+}
+
+.booking-info {
+  background: #e3f2fd;
+  padding: 15px;
+  border-radius: 6px;
+  margin-bottom: 20px;
+  border-left: 4px solid #2196f3;
+}
+
+.booking-info h4 {
+  margin: 0 0 10px 0;
+  color: #1976d2;
+}
+
+.booking-info ul {
+  margin: 0;
+  padding-left: 20px;
+  color: #1976d2;
+}
+
+.booking-info li {
+  margin-bottom: 5px;
+}
+
+/* Hide form initially */
+.booking-form {
+  display: none;
+}
+
+.booking-form.show {
+  display: block;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .form-row {
+    grid-template-columns: 1fr;
+  }
+  
+  .booking-content {
+    padding: 15px;
+  }
+  
+  .booking-header {
+    padding: 15px;
+  }
+  
+  .booking-header h3 {
+    font-size: 1.3rem;
+  }
+}
+
+/* Theme Integration */
+.shopify-section .booking-widget-section {
+  margin: 0;
+}
+
+/* Override theme styles if needed */
+.booking-widget-section * {
+  box-sizing: border-box;
+}
+
+.booking-widget-section h3,
+.booking-widget-section h4 {
+  font-family: inherit;
+}
+
+/* Dark mode support */
+@media (prefers-color-scheme: dark) {
+  .booking-card {
+    background: #1a1a1a;
+    border-color: #333;
+  }
+  
+  .booking-summary {
+    background: #2a2a2a;
+  }
+  
+  .booking-summary h4 {
+    color: #fff;
+  }
+  
+  input, select, textarea {
+    background: #2a2a2a;
+    border-color: #444;
+    color: #fff;
+  }
+  
+  label {
+    color: #fff;
+  }
+}

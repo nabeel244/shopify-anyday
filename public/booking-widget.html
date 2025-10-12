@@ -1,0 +1,645 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Booking Widget</title>
+    <style>
+        .booking-widget {
+            max-width: 100%;
+            margin: 20px 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+
+        .booking-card {
+            border: 1px solid #e1e5e9;
+            border-radius: 8px;
+            background: #fff;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+
+        .booking-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            text-align: center;
+        }
+
+        .booking-header h3 {
+            margin: 0;
+            font-size: 1.5rem;
+            font-weight: 600;
+        }
+
+        .booking-content {
+            padding: 20px;
+        }
+
+        .booking-summary {
+            background: #f8f9fa;
+            border-radius: 6px;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+
+        .booking-summary h4 {
+            margin: 0 0 10px 0;
+            color: #333;
+            font-size: 1.1rem;
+        }
+
+        .summary-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+        }
+
+        .summary-row:last-child {
+            margin-bottom: 0;
+        }
+
+        .price-badge {
+            background: #28a745;
+            color: white;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-weight: 600;
+            font-size: 1.1rem;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+        }
+
+        .form-row.single {
+            grid-template-columns: 1fr;
+        }
+
+        .form-row.triple {
+            grid-template-columns: 1fr 1fr 1fr;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 500;
+            color: #333;
+        }
+
+        .required {
+            color: #dc3545;
+        }
+
+        input, select, textarea {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+            transition: border-color 0.3s ease;
+            box-sizing: border-box;
+        }
+
+        input:focus, select:focus, textarea:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.2);
+        }
+
+        .error {
+            color: #dc3545;
+            font-size: 12px;
+            margin-top: 5px;
+        }
+
+        .booking-button {
+            width: 100%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 15px;
+            border-radius: 6px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s ease;
+        }
+
+        .booking-button:hover {
+            transform: translateY(-2px);
+        }
+
+        .booking-button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .booking-button.loading {
+            position: relative;
+            color: transparent;
+        }
+
+        .booking-button.loading::after {
+            content: '';
+            position: absolute;
+            width: 20px;
+            height: 20px;
+            top: 50%;
+            left: 50%;
+            margin-left: -10px;
+            margin-top: -10px;
+            border: 2px solid #ffffff;
+            border-radius: 50%;
+            border-top-color: transparent;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        .success-message {
+            background: #d4edda;
+            color: #155724;
+            padding: 15px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+            border: 1px solid #c3e6cb;
+        }
+
+        .error-message {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 15px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+            border: 1px solid #f5c6cb;
+        }
+
+        .toggle-form {
+            background: #6c757d;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-bottom: 20px;
+        }
+
+        .booking-info {
+            background: #e3f2fd;
+            padding: 15px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+            border-left: 4px solid #2196f3;
+        }
+
+        .booking-info h4 {
+            margin: 0 0 10px 0;
+            color: #1976d2;
+        }
+
+        .booking-info ul {
+            margin: 0;
+            padding-left: 20px;
+            color: #1976d2;
+        }
+
+        .booking-info li {
+            margin-bottom: 5px;
+        }
+
+        /* Responsive Design */
+        @media (max-width: 768px) {
+            .form-row {
+                grid-template-columns: 1fr;
+            }
+            
+            .form-row.triple {
+                grid-template-columns: 1fr;
+            }
+            
+            .booking-content {
+                padding: 15px;
+            }
+        }
+
+        /* Hide form initially */
+        .booking-form {
+            display: none;
+        }
+
+        .booking-form.show {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <div class="booking-widget">
+        <div class="booking-card">
+            <!-- Booking Summary Card -->
+            <div class="booking-summary-card" id="bookingSummary">
+                <div class="booking-header">
+                    <h3>📅 Book This Service</h3>
+                </div>
+                <div class="booking-content">
+                    <div class="booking-summary">
+                        <h4>Service Details</h4>
+                        <div class="summary-row">
+                            <span><strong>Service:</strong></span>
+                            <span id="serviceName">Birthday Party Center</span>
+                        </div>
+                        <div class="summary-row">
+                            <span><strong>Price:</strong></span>
+                            <span class="price-badge" id="servicePrice">$299.00</span>
+                        </div>
+                        <div class="summary-row">
+                            <span><strong>Duration:</strong></span>
+                            <span>Full day service (8 hours)</span>
+                        </div>
+                    </div>
+
+                    <div class="booking-info">
+                        <h4>What's included:</h4>
+                        <ul>
+                            <li>Instant booking confirmation</li>
+                            <li>Email notifications</li>
+                            <li>Easy rescheduling</li>
+                            <li>Professional service</li>
+                        </ul>
+                    </div>
+
+                    <button class="booking-button" onclick="showBookingForm()">
+                        📅 Book Appointment
+                    </button>
+
+                    <p style="text-align: center; color: #666; margin-top: 15px; font-size: 14px;">
+                        Choose your preferred date and time. You'll receive instant confirmation via email.
+                    </p>
+                </div>
+            </div>
+
+            <!-- Booking Form -->
+            <div class="booking-form" id="bookingForm">
+                <div class="booking-header">
+                    <h3>Book Your Appointment</h3>
+                </div>
+                <div class="booking-content">
+                    <button class="toggle-form" onclick="hideBookingForm()">✕ Cancel</button>
+
+                    <div id="messageContainer"></div>
+
+                    <form id="bookingFormElement">
+                        <!-- Personal Information -->
+                        <div class="form-group">
+                            <h4>Personal Information</h4>
+                            <div class="form-row">
+                                <div>
+                                    <label for="firstName">First Name <span class="required">*</span></label>
+                                    <input type="text" id="firstName" name="firstName" required>
+                                    <div class="error" id="firstNameError"></div>
+                                </div>
+                                <div>
+                                    <label for="lastName">Last Name <span class="required">*</span></label>
+                                    <input type="text" id="lastName" name="lastName" required>
+                                    <div class="error" id="lastNameError"></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <div class="form-row">
+                                <div>
+                                    <label for="email">Email <span class="required">*</span></label>
+                                    <input type="email" id="email" name="email" required>
+                                    <div class="error" id="emailError"></div>
+                                </div>
+                                <div>
+                                    <label for="phone">Phone Number <span class="required">*</span></label>
+                                    <input type="tel" id="phone" name="phone" required>
+                                    <div class="error" id="phoneError"></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Date & Time Selection -->
+                        <div class="form-group">
+                            <h4>Select Date & Time</h4>
+                            <div class="form-row">
+                                <div>
+                                    <label for="bookingDate">Booking Date <span class="required">*</span></label>
+                                    <input type="date" id="bookingDate" name="bookingDate" required>
+                                    <div class="error" id="bookingDateError"></div>
+                                </div>
+                                <div>
+                                    <label for="startTime">Time Slot <span class="required">*</span></label>
+                                    <select id="startTime" name="startTime" required>
+                                        <option value="">Select a time...</option>
+                                        <option value="09:00">9:00 AM</option>
+                                        <option value="09:30">9:30 AM</option>
+                                        <option value="10:00">10:00 AM</option>
+                                        <option value="10:30">10:30 AM</option>
+                                        <option value="11:00">11:00 AM</option>
+                                        <option value="11:30">11:30 AM</option>
+                                        <option value="12:00">12:00 PM</option>
+                                        <option value="12:30">12:30 PM</option>
+                                        <option value="13:00">1:00 PM</option>
+                                        <option value="13:30">1:30 PM</option>
+                                        <option value="14:00">2:00 PM</option>
+                                        <option value="14:30">2:30 PM</option>
+                                        <option value="15:00">3:00 PM</option>
+                                        <option value="15:30">3:30 PM</option>
+                                        <option value="16:00">4:00 PM</option>
+                                        <option value="16:30">4:30 PM</option>
+                                        <option value="17:00">5:00 PM</option>
+                                    </select>
+                                    <div class="error" id="startTimeError"></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Special Requests -->
+                        <div class="form-group">
+                            <label for="specialRequests">Special Requests (Optional)</label>
+                            <textarea id="specialRequests" name="specialRequests" rows="3" placeholder="Any special requests or notes for your appointment..."></textarea>
+                        </div>
+
+                        <!-- Booking Summary -->
+                        <div class="form-group">
+                            <h4>Booking Summary</h4>
+                            <div class="booking-summary">
+                                <div class="summary-row">
+                                    <span><strong>Service:</strong></span>
+                                    <span id="summaryServiceName">Birthday Party Center</span>
+                                </div>
+                                <div class="summary-row">
+                                    <span><strong>Date:</strong></span>
+                                    <span id="summaryDate">-</span>
+                                </div>
+                                <div class="summary-row">
+                                    <span><strong>Time:</strong></span>
+                                    <span id="summaryTime">-</span>
+                                </div>
+                                <div class="summary-row">
+                                    <span><strong>Total Price:</strong></span>
+                                    <span class="price-badge" id="summaryPrice">$299.00</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <button type="submit" class="booking-button" id="submitButton">
+                            Confirm Booking
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Product data - this would be populated by your theme
+        const productData = {
+            id: 'gid://shopify/Product/123456789',
+            title: 'Birthday Party Center',
+            price: 299.00
+        };
+
+        // Initialize the widget
+        document.addEventListener('DOMContentLoaded', function() {
+            updateProductInfo();
+            setMinDate();
+            setupFormValidation();
+        });
+
+        function updateProductInfo() {
+            document.getElementById('serviceName').textContent = productData.title;
+            document.getElementById('servicePrice').textContent = formatPrice(productData.price);
+            document.getElementById('summaryServiceName').textContent = productData.title;
+            document.getElementById('summaryPrice').textContent = formatPrice(productData.price);
+        }
+
+        function setMinDate() {
+            const today = new Date();
+            const tomorrow = new Date(today);
+            tomorrow.setDate(tomorrow.getDate() + 1);
+            
+            const dateInput = document.getElementById('bookingDate');
+            dateInput.min = tomorrow.toISOString().split('T')[0];
+        }
+
+        function formatPrice(price) {
+            return new Intl.NumberFormat('en-US', {
+                style: 'currency',
+                currency: 'USD'
+            }).format(price);
+        }
+
+        function showBookingForm() {
+            document.getElementById('bookingSummary').style.display = 'none';
+            document.getElementById('bookingForm').classList.add('show');
+        }
+
+        function hideBookingForm() {
+            document.getElementById('bookingForm').classList.remove('show');
+            document.getElementById('bookingSummary').style.display = 'block';
+            clearForm();
+        }
+
+        function clearForm() {
+            document.getElementById('bookingFormElement').reset();
+            clearErrors();
+            setMinDate();
+        }
+
+        function setupFormValidation() {
+            const form = document.getElementById('bookingFormElement');
+            const dateInput = document.getElementById('bookingDate');
+            const timeInput = document.getElementById('startTime');
+
+            // Update summary when date/time changes
+            dateInput.addEventListener('change', updateSummary);
+            timeInput.addEventListener('change', updateSummary);
+
+            // Form submission
+            form.addEventListener('submit', handleSubmit);
+        }
+
+        function updateSummary() {
+            const date = document.getElementById('bookingDate').value;
+            const time = document.getElementById('startTime').value;
+
+            if (date) {
+                const dateObj = new Date(date);
+                document.getElementById('summaryDate').textContent = dateObj.toLocaleDateString('en-US', {
+                    weekday: 'long',
+                    year: 'numeric',
+                    month: 'long',
+                    day: 'numeric'
+                });
+            }
+
+            if (time) {
+                const endTime = calculateEndTime(time, 480); // 8 hours = 480 minutes
+                document.getElementById('summaryTime').textContent = `${formatTime(time)} - ${formatTime(endTime)}`;
+            }
+        }
+
+        function calculateEndTime(startTime, durationMinutes) {
+            const [hours, minutes] = startTime.split(':').map(Number);
+            const startDate = new Date();
+            startDate.setHours(hours, minutes, 0, 0);
+            
+            const endDate = new Date(startDate.getTime() + durationMinutes * 60000);
+            return `${endDate.getHours().toString().padStart(2, '0')}:${endDate.getMinutes().toString().padStart(2, '0')}`;
+        }
+
+        function formatTime(timeString) {
+            const [hours, minutes] = timeString.split(':').map(Number);
+            const date = new Date();
+            date.setHours(hours, minutes, 0, 0);
+            return date.toLocaleTimeString('en-US', {
+                hour: 'numeric',
+                minute: '2-digit',
+                hour12: true
+            });
+        }
+
+        function validateForm() {
+            clearErrors();
+            let isValid = true;
+
+            const firstName = document.getElementById('firstName').value.trim();
+            const lastName = document.getElementById('lastName').value.trim();
+            const email = document.getElementById('email').value.trim();
+            const phone = document.getElementById('phone').value.trim();
+            const bookingDate = document.getElementById('bookingDate').value;
+            const startTime = document.getElementById('startTime').value;
+
+            if (!firstName) {
+                showError('firstNameError', 'First name is required');
+                isValid = false;
+            }
+
+            if (!lastName) {
+                showError('lastNameError', 'Last name is required');
+                isValid = false;
+            }
+
+            if (!email) {
+                showError('emailError', 'Email is required');
+                isValid = false;
+            } else if (!/\S+@\S+\.\S+/.test(email)) {
+                showError('emailError', 'Email is invalid');
+                isValid = false;
+            }
+
+            if (!phone) {
+                showError('phoneError', 'Phone number is required');
+                isValid = false;
+            }
+
+            if (!bookingDate) {
+                showError('bookingDateError', 'Please select a date');
+                isValid = false;
+            }
+
+            if (!startTime) {
+                showError('startTimeError', 'Please select a time slot');
+                isValid = false;
+            }
+
+            return isValid;
+        }
+
+        function showError(elementId, message) {
+            document.getElementById(elementId).textContent = message;
+        }
+
+        function clearErrors() {
+            const errorElements = document.querySelectorAll('.error');
+            errorElements.forEach(element => {
+                element.textContent = '';
+            });
+        }
+
+        function showMessage(message, type = 'success') {
+            const container = document.getElementById('messageContainer');
+            const messageClass = type === 'success' ? 'success-message' : 'error-message';
+            container.innerHTML = `<div class="${messageClass}">${message}</div>`;
+            
+            // Scroll to message
+            container.scrollIntoView({ behavior: 'smooth' });
+        }
+
+        async function handleSubmit(event) {
+            event.preventDefault();
+
+            if (!validateForm()) {
+                return;
+            }
+
+            const submitButton = document.getElementById('submitButton');
+            submitButton.classList.add('loading');
+            submitButton.disabled = true;
+
+            try {
+                const formData = new FormData(event.target);
+                const bookingData = {
+                    firstName: formData.get('firstName'),
+                    lastName: formData.get('lastName'),
+                    email: formData.get('email'),
+                    phone: formData.get('phone'),
+                    bookingDate: formData.get('bookingDate'),
+                    startTime: formData.get('startTime'),
+                    specialRequests: formData.get('specialRequests'),
+                    productId: productData.id,
+                    productTitle: productData.title,
+                    productPrice: productData.price,
+                    totalPrice: productData.price
+                };
+
+                // Calculate end time
+                const endTime = calculateEndTime(bookingData.startTime, 480);
+                bookingData.endTime = endTime;
+
+                const response = await fetch('/api/bookings', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ bookingData })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    showMessage('🎉 Booking confirmed successfully! You will receive a confirmation email shortly.', 'success');
+                    clearForm();
+                    setTimeout(() => {
+                        hideBookingForm();
+                    }, 3000);
+                } else {
+                    showMessage(`❌ Error: ${result.error}`, 'error');
+                }
+            } catch (error) {
+                console.error('Booking error:', error);
+                showMessage('❌ Failed to submit booking. Please try again.', 'error');
+            } finally {
+                submitButton.classList.remove('loading');
+                submitButton.disabled = false;
+            }
+        }
+    </script>
+</body>
+</html>

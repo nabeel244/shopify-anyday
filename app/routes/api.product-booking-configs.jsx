@@ -34,20 +34,28 @@ async function createConfiguration(request) {
     console.log('Prisma client:', prisma);
     console.log('Available models:', Object.keys(prisma));
     
+    const requestData = await request.json();
+    console.log('🔍 Received request data:', requestData);
+    
     const { 
       productId, 
       productTitle, 
       productPrice, 
+      city,
       availableDays, 
       timeSlots, 
+      timeRanges,
       timeRangeStart,
       timeRangeEnd,
       slotDuration,
       disabledDates,
+      services,
       duration, 
-      maxBookings, 
+      maxBookings,
+      bookingStartDate,
+      bookingEndDate,
       isActive 
-    } = await request.json();
+    } = requestData;
 
     // Validate required fields
     if (!productId || !productTitle || !productPrice) {
@@ -57,6 +65,11 @@ async function createConfiguration(request) {
     // Validate that at least one day is selected
     if (!availableDays || availableDays.length === 0) {
       return json({ error: 'Please select at least one available day' }, { status: 400 });
+    }
+
+    // Validate that at least one time configuration is available
+    if ((!timeRanges || timeRanges.length === 0) && (!timeSlots || timeSlots.length === 0) && (!timeRangeStart || !timeRangeEnd)) {
+      return json({ error: 'Please configure time availability: add time ranges, time slots, or set a time range' }, { status: 400 });
     }
 
     // Check if configuration already exists
@@ -70,22 +83,33 @@ async function createConfiguration(request) {
       return json({ error: 'Configuration already exists for this product' }, { status: 400 });
     }
 
+    const configData = {
+      productId,
+      productTitle,
+      productPrice: parseFloat(productPrice),
+      city: city || null,
+      availableDays: JSON.stringify(availableDays || []),
+      timeSlots: JSON.stringify(timeSlots || []),
+      timeRanges: JSON.stringify(timeRanges || []),
+      timeRangeStart: timeRangeStart || null,
+      timeRangeEnd: timeRangeEnd || null,
+      slotDuration: parseInt(slotDuration) || 30,
+      disabledDates: JSON.stringify(disabledDates || []),
+      services: JSON.stringify(services || []),
+      duration: parseInt(duration) || 480,
+      maxBookings: parseInt(maxBookings) || 1,
+      bookingStartDate: bookingStartDate || null,
+      bookingEndDate: bookingEndDate || null,
+      isActive: isActive !== false
+    };
+
+    console.log('🔍 Creating configuration with data:', configData);
+
     const configuration = await prisma.productBookingConfig.create({
-      data: {
-        productId,
-        productTitle,
-        productPrice: parseFloat(productPrice),
-        availableDays: JSON.stringify(availableDays || []),
-        timeSlots: JSON.stringify(timeSlots || []),
-        timeRangeStart: timeRangeStart || null,
-        timeRangeEnd: timeRangeEnd || null,
-        slotDuration: parseInt(slotDuration) || 30,
-        disabledDates: JSON.stringify(disabledDates || []),
-        duration: parseInt(duration) || 480,
-        maxBookings: parseInt(maxBookings) || 1,
-        isActive: isActive !== false
-      }
+      data: configData
     });
+
+    console.log('✅ Configuration created successfully:', configuration);
 
     return json({ configuration });
   } catch (error) {
@@ -104,7 +128,23 @@ async function createConfiguration(request) {
 
 async function updateConfiguration(request) {
   try {
-    const { id, isActive, availableDays, timeSlots, duration, maxBookings } = await request.json();
+    const { 
+      id, 
+      isActive, 
+      city,
+      availableDays, 
+      timeSlots, 
+      timeRanges,
+      timeRangeStart,
+      timeRangeEnd,
+      slotDuration,
+      disabledDates,
+      services,
+      duration, 
+      maxBookings,
+      bookingStartDate,
+      bookingEndDate
+    } = await request.json();
 
     if (!id) {
       return json({ error: 'Configuration ID is required' }, { status: 400 });
@@ -112,10 +152,19 @@ async function updateConfiguration(request) {
 
     const updateData = {};
     if (isActive !== undefined) updateData.isActive = isActive;
+    if (city !== undefined) updateData.city = city || null;
     if (availableDays) updateData.availableDays = JSON.stringify(availableDays);
     if (timeSlots) updateData.timeSlots = JSON.stringify(timeSlots);
-    if (duration) updateData.duration = parseInt(duration);
-    if (maxBookings) updateData.maxBookings = parseInt(maxBookings);
+    if (timeRanges) updateData.timeRanges = JSON.stringify(timeRanges);
+    if (timeRangeStart !== undefined) updateData.timeRangeStart = timeRangeStart;
+    if (timeRangeEnd !== undefined) updateData.timeRangeEnd = timeRangeEnd;
+    if (slotDuration !== undefined) updateData.slotDuration = parseInt(slotDuration);
+    if (disabledDates) updateData.disabledDates = JSON.stringify(disabledDates);
+    if (services) updateData.services = JSON.stringify(services);
+    if (duration !== undefined) updateData.duration = parseInt(duration);
+    if (maxBookings !== undefined) updateData.maxBookings = parseInt(maxBookings);
+    if (bookingStartDate !== undefined) updateData.bookingStartDate = bookingStartDate;
+    if (bookingEndDate !== undefined) updateData.bookingEndDate = bookingEndDate;
 
     const configuration = await prisma.productBookingConfig.update({
       where: { id },

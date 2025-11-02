@@ -42,6 +42,7 @@ export default function BookingsDashboard() {
   const [statistics, setStatistics] = useState({
     total: 0,
     pending: 0,
+    paymentPending: 0,
     confirmed: 0,
     cancelled: 0,
     completed: 0
@@ -60,6 +61,8 @@ export default function BookingsDashboard() {
       if (data.error) {
         console.error('Failed to load bookings:', data.error);
       } else {
+        console.log('🔍 Loaded bookings:', data.bookings.length);
+        console.log('🔍 Sample booking:', data.bookings[0]);
         setBookings(data.bookings || []);
         calculateStatistics(data.bookings || []);
       }
@@ -74,6 +77,7 @@ export default function BookingsDashboard() {
     const stats = {
       total: bookingsData.length,
       pending: bookingsData.filter(b => b.status === 'PENDING').length,
+      paymentPending: bookingsData.filter(b => b.status === 'PAYMENT_PENDING').length,
       confirmed: bookingsData.filter(b => b.status === 'CONFIRMED').length,
       cancelled: bookingsData.filter(b => b.status === 'CANCELLED').length,
       completed: bookingsData.filter(b => b.status === 'COMPLETED').length
@@ -112,10 +116,10 @@ export default function BookingsDashboard() {
     setShowModal(true);
   };
 
-  const handleEditBooking = (booking) => {
-    setSelectedBooking(booking);
-    setModalAction('edit');
-    setShowModal(true);
+  const handleCancelBooking = async (bookingId) => {
+    if (confirm('Are you sure you want to cancel this booking? The customer will be notified via email.')) {
+      await handleStatusChange(bookingId, 'CANCELLED');
+    }
   };
 
   const formatDate = (dateString) => {
@@ -137,15 +141,48 @@ export default function BookingsDashboard() {
     }).format(price);
   };
 
+  const getSelectedServicesDisplay = (selectedServicesJson) => {
+    if (!selectedServicesJson) {
+      return 'No additional services';
+    }
+    
+    try {
+      const selectedServices = JSON.parse(selectedServicesJson);
+      if (!Array.isArray(selectedServices) || selectedServices.length === 0) {
+        return 'No additional services';
+      }
+      
+      return selectedServices.map(service => 
+        `${service.name} ($${service.price})`
+      ).join(', ');
+    } catch (error) {
+      console.error('Error parsing selected services:', error);
+      return 'Error parsing services';
+    }
+  };
+
   const getStatusBadge = (status) => {
     const statusConfig = {
       PENDING: { status: 'warning', text: 'Pending' },
+      PAYMENT_PENDING: { status: 'critical', text: 'Payment Required' },
       CONFIRMED: { status: 'success', text: 'Confirmed' },
       CANCELLED: { status: 'critical', text: 'Cancelled' },
       COMPLETED: { status: 'info', text: 'Completed' }
     };
     
     const config = statusConfig[status] || { status: 'info', text: status };
+    return <Badge status={config.status}>{config.text}</Badge>;
+  };
+
+  const getPaymentStatusBadge = (paymentStatus) => {
+    const paymentConfig = {
+      PENDING: { status: 'warning', text: 'Pending Payment' },
+      PROCESSING: { status: 'info', text: 'Processing' },
+      COMPLETED: { status: 'success', text: 'Paid' },
+      FAILED: { status: 'critical', text: 'Payment Failed' },
+      REFUNDED: { status: 'info', text: 'Refunded' },
+    };
+    const config = paymentConfig[paymentStatus] || { status: 'info', text: paymentStatus };
     return <Badge status={config.status}>{config.text}</Badge>;
   };
 
@@ -254,6 +291,7 @@ export default function BookingsDashboard() {
                       options={[
                         { label: 'All Statuses', value: '' },
                         { label: 'Pending', value: 'PENDING' },
+                        { label: 'Payment Required', value: 'PAYMENT_PENDING' },
                         { label: 'Confirmed', value: 'CONFIRMED' },
                         { label: 'Cancelled', value: 'CANCELLED' },
                         { label: 'Completed', value: 'COMPLETED' }
@@ -290,33 +328,44 @@ export default function BookingsDashboard() {
                 </EmptyState>
               </Box>
             ) : (
-              <DataTable
-                columnContentTypes={['text', 'text', 'text', 'text', 'text', 'text', 'text', 'text']}
-                headings={['Customer', 'Service', 'Date', 'Time', 'Price', 'Status', 'Created', 'Actions']}
-                rows={filteredBookings.map(booking => [
-                  `${booking.user.firstName} ${booking.user.lastName}`,
-                  booking.service?.name || booking.productBookingConfig?.productTitle || 'Unknown',
-                  formatDate(booking.bookingDate),
-                  `${formatTime(booking.startTime)} - ${formatTime(booking.endTime)}`,
-                  formatPrice(booking.totalPrice),
-                  getStatusBadge(booking.status),
-                  formatDate(booking.createdAt),
-                  <InlineStack gap="100">
-                    <Button 
-                      size="slim" 
-                      onClick={() => handleViewBooking(booking)}
-                    >
-                      View
-                    </Button>
-                    <Button 
-                      size="slim" 
-                      onClick={() => handleEditBooking(booking)}
-                    >
-                      Edit
-                    </Button>
-                  </InlineStack>
-                ])}
-              />
+          <DataTable
+            columnContentTypes={['text', 'text', 'text', 'text', 'text', 'text', 'text', 'text', 'text', 'text']}
+            headings={['Customer', 'Service', 'Selected Services', 'Date', 'Time', 'Price', 'Status', 'Payment', 'Created', 'Actions']}
+            rows={filteredBookings.map(booking => [
+              `${booking.user.firstName} ${booking.user.lastName}`,
+              booking.service?.name || booking.productBookingConfig?.productTitle || 'Unknown',
+              getSelectedServicesDisplay(booking.selectedServices),
+              formatDate(booking.bookingDate),
+              `${formatTime(booking.startTime)} - ${formatTime(booking.endTime)}`,
+              formatPrice(booking.totalPrice),
+              getStatusBadge(booking.status),
+              getPaymentStatusBadge(booking.paymentStatus),
+              formatDate(booking.createdAt),
+              <InlineStack gap="100">
+                <Button 
+                  size="slim" 
+                  onClick={() => handleViewBooking(booking)}
+                >
+                  View
+                </Button>
+                <Button 
+                  size="slim" 
+                  onClick={() => handleEditBooking(booking)}
+                >
+                  Edit
+                </Button>
+                {booking.status !== 'CANCELLED' && booking.status !== 'COMPLETED' && (
+                  <Button 
+                    size="slim" 
+                    tone="critical"
+                    onClick={() => handleCancelBooking(booking.id)}
+                  >
+                    Cancel
+                  </Button>
+                )}
+              </InlineStack>
+            ])}
+          />
             )}
           </Card>
         </Layout.Section>
@@ -367,6 +416,13 @@ export default function BookingsDashboard() {
                   />
                 </FormLayout.Group>
 
+                <TextField
+                  label="Selected Services"
+                  value={getSelectedServicesDisplay(selectedBooking.selectedServices)}
+                  readOnly
+                  multiline={3}
+                />
+
                 <FormLayout.Group>
                   <TextField
                     label="Booking Date"
@@ -388,10 +444,26 @@ export default function BookingsDashboard() {
                     readOnly
                   />
                   
+                  <TextField
+                    label="Payment Status"
+                    value={selectedBooking.paymentStatus || 'PENDING'}
+                    readOnly
+                    connectedRight={<Badge status={getPaymentStatusBadge(selectedBooking.paymentStatus).props.status}>{selectedBooking.paymentStatus || 'PENDING'}</Badge>}
+                  />
+                </FormLayout.Group>
+
+                <FormLayout.Group>
+                  <TextField
+                    label="Shopify Order ID"
+                    value={selectedBooking.shopifyOrderId || 'N/A'}
+                    readOnly
+                  />
+                  
                   <Select
                     label="Status"
                     options={[
                       { label: 'Pending', value: 'PENDING' },
+                      { label: 'Payment Required', value: 'PAYMENT_PENDING' },
                       { label: 'Confirmed', value: 'CONFIRMED' },
                       { label: 'Cancelled', value: 'CANCELLED' },
                       { label: 'Completed', value: 'COMPLETED' }
@@ -416,6 +488,17 @@ export default function BookingsDashboard() {
                 <Button onClick={() => setShowModal(false)}>
                   Close
                 </Button>
+                {selectedBooking.status !== 'CANCELLED' && selectedBooking.status !== 'COMPLETED' && (
+                  <Button 
+                    tone="critical"
+                    onClick={() => {
+                      handleCancelBooking(selectedBooking.id);
+                      setShowModal(false);
+                    }}
+                  >
+                    Cancel Booking
+                  </Button>
+                )}
               </InlineStack>
             </BlockStack>
           </Modal.Section>

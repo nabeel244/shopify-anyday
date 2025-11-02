@@ -1,0 +1,295 @@
+{% comment %}
+  Home Page Filter Bar
+  A horizontal filter bar that redirects to collections page with selected filters
+{% endcomment %}
+
+<div id="home-filter-bar" class="home-filter-bar">
+  <div class="filter-bar-container">
+    <!-- Date Picker -->
+    <div class="filter-item">
+      <label for="home-filter-date" class="filter-label">Date</label>
+      <input 
+        type="date" 
+        id="home-filter-date" 
+        name="date"
+        class="filter-input"
+        min="{{ 'now' | date: '%Y-%m-%d' }}"
+      >
+    </div>
+
+    <!-- Time Picker -->
+    <div class="filter-item">
+      <label for="home-filter-time" class="filter-label">Time</label>
+      <select id="home-filter-time" name="time" class="filter-select">
+        <option value="">Select Time</option>
+      </select>
+    </div>
+
+    <!-- City Picker -->
+    <div class="filter-item">
+      <label for="home-filter-city" class="filter-label">City</label>
+      <select id="home-filter-city" name="city" class="filter-select">
+        <option value="">Select City</option>
+      </select>
+    </div>
+
+    <!-- Search Button -->
+    <button 
+      type="button" 
+      id="home-filter-search-btn" 
+      class="filter-search-btn"
+      onclick="redirectToCollectionWithFilters()"
+    >
+      Search
+    </button>
+  </div>
+</div>
+
+<script>
+// Home Page Filter JavaScript
+const HOME_FILTER_APP_URL = 'https://32f54c2a17ce.ngrok-free.app';
+let homeFilterData = null;
+
+// Initialize on page load
+document.addEventListener('DOMContentLoaded', function() {
+  console.log('🏠 Initializing home page filters...');
+  loadHomeFilterData();
+});
+
+async function loadHomeFilterData() {
+  try {
+    console.log('🔄 Loading filter options from API...');
+    
+    const response = await fetch(`${HOME_FILTER_APP_URL}/api/collection-filters`, {
+      headers: {
+        'ngrok-skip-browser-warning': 'true'
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    console.log('✅ Filter data loaded:', data);
+
+    if (data.success) {
+      homeFilterData = data.filters;
+      populateHomeFilters();
+    } else {
+      throw new Error(data.error || 'Failed to load filters');
+    }
+
+  } catch (error) {
+    console.error('❌ Error loading home filter options:', error);
+  }
+}
+
+function populateHomeFilters() {
+  // Populate time slots
+  const timeSelect = document.getElementById('home-filter-time');
+  if (homeFilterData.times && homeFilterData.times.length > 0) {
+    homeFilterData.times.forEach(time => {
+      const option = document.createElement('option');
+      option.value = time;
+      option.textContent = formatTime(time);
+      timeSelect.appendChild(option);
+    });
+  }
+
+  // Populate cities
+  const citySelect = document.getElementById('home-filter-city');
+  if (homeFilterData.cities && homeFilterData.cities.length > 0) {
+    homeFilterData.cities.forEach(city => {
+      const option = document.createElement('option');
+      option.value = city;
+      option.textContent = city;
+      citySelect.appendChild(option);
+    });
+  }
+}
+
+function redirectToCollectionWithFilters() {
+  const date = document.getElementById('home-filter-date').value;
+  const time = document.getElementById('home-filter-time').value;
+  const city = document.getElementById('home-filter-city').value;
+
+  // Build collection URL with filters
+  const filters = [];
+  
+  if (date) filters.push(`date=${encodeURIComponent(date)}`);
+  if (time) filters.push(`time=${encodeURIComponent(time)}`);
+  if (city) filters.push(`city=${encodeURIComponent(city)}`);
+
+  // Get the collection URL (you may need to adjust this based on your setup)
+  const collectionHandle = 'all'; // Change this to your actual collection handle
+  let collectionUrl = `/collections/${collectionHandle}`;
+  
+  if (filters.length > 0) {
+    collectionUrl += '?' + filters.join('&');
+  }
+
+  console.log('🔍 Redirecting to collection with filters:', collectionUrl);
+  window.location.href = collectionUrl;
+}
+
+function formatTime(time) {
+  // Format time from 24h to 12h format
+  const [hours, minutes] = time.split(':');
+  const hour = parseInt(hours);
+  const ampm = hour >= 12 ? 'PM' : 'AM';
+  const hour12 = hour % 12 || 12;
+  return `${hour12}:${minutes} ${ampm}`;
+}
+
+// Allow Enter key to trigger search
+document.getElementById('home-filter-date')?.addEventListener('keypress', function(e) {
+  if (e.key === 'Enter') {
+    redirectToCollectionWithFilters();
+  }
+});
+
+document.getElementById('home-filter-time')?.addEventListener('keypress', function(e) {
+  if (e.key === 'Enter') {
+    redirectToCollectionWithFilters();
+  }
+});
+
+document.getElementById('home-filter-city')?.addEventListener('keypress', function(e) {
+  if (e.key === 'Enter') {
+    redirectToCollectionWithFilters();
+  }
+});
+</script>
+
+<style>
+.home-filter-bar {
+  width: 100%;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  padding: 20px 0;
+  margin: 20px 0;
+}
+
+.filter-bar-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  background: white;
+  border-radius: 50px;
+  padding: 8px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+}
+
+.filter-item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 8px 16px;
+  border-right: 1px solid #e5e5e5;
+}
+
+.filter-item:last-of-type {
+  border-right: none;
+}
+
+.filter-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #667eea;
+  margin-bottom: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.filter-input,
+.filter-select {
+  border: none;
+  background: transparent;
+  font-size: 1rem;
+  color: #333;
+  padding: 8px 0;
+  outline: none;
+  width: 100%;
+}
+
+.filter-input::placeholder {
+  color: #999;
+}
+
+.filter-select {
+  cursor: pointer;
+}
+
+.filter-select option {
+  padding: 10px;
+}
+
+.filter-search-btn {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: none;
+  border-radius: 50px;
+  padding: 20px 40px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s;
+  margin-left: 8px;
+}
+
+.filter-search-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+}
+
+.filter-search-btn:active {
+  transform: translateY(0);
+}
+
+/* Mobile Responsive */
+@media (max-width: 768px) {
+  .filter-bar-container {
+    flex-wrap: wrap;
+    border-radius: 20px;
+    padding: 16px;
+  }
+
+  .filter-item {
+    width: 50%;
+    border-right: none;
+    border-bottom: 1px solid #e5e5e5;
+    padding: 12px 16px;
+  }
+
+  .filter-item:nth-child(2n) {
+    border-right: 1px solid #e5e5e5;
+  }
+
+  .filter-item:last-child,
+  .filter-item:nth-last-child(2) {
+    border-bottom: none;
+  }
+
+  .filter-search-btn {
+    width: calc(100% - 32px);
+    margin: 12px 16px 0;
+    padding: 16px;
+  }
+}
+
+@media (max-width: 480px) {
+  .filter-item {
+    width: 100%;
+  }
+
+  .filter-item:nth-child(2n) {
+    border-right: none;
+  }
+
+  .filter-search-btn {
+    margin: 12px 8px 0;
+  }
+}
+</style>
+

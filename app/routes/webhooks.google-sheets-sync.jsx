@@ -1,6 +1,7 @@
 import { json } from "@remix-run/node";
 import { PrismaClient } from "@prisma/client";
 import { GoogleSheetsService } from "../services/googleSheets.server.js";
+import { emailService } from "../services/email.server.js";
 
 const prisma = new PrismaClient();
 
@@ -19,12 +20,34 @@ export async function action({ request }) {
     // Sync changes from Google Sheets
     const deletedBookings = await sheetsService.syncFromSheets();
 
-    // Update booking statuses in database
+    // Update booking statuses in database and send cancellation emails
     for (const bookingId of deletedBookings) {
-      await prisma.booking.update({
+      const booking = await prisma.booking.findUnique({
         where: { id: bookingId },
-        data: { status: 'CANCELLED' }
+        include: {
+          user: true,
+          service: true,
+          productBookingConfig: true
+        }
       });
+
+      if (booking && booking.status !== 'CANCELLED') {
+        // Update status to cancelled
+        await prisma.booking.update({
+          where: { id: bookingId },
+          data: { status: 'CANCELLED' }
+        });
+
+        // Send cancellation email to customer
+        try {
+          await emailService.sendBookingCancellation(booking, 'Cancelled by manager from Google Sheets');
+          console.log('✅ Cancellation email sent for booking:', bookingId);
+        } catch (emailError) {
+          console.error('❌ Failed to send cancellation email:', emailError);
+        }
+
+        console.log('✅ Cancelled booking from Google Sheets:', bookingId);
+      }
     }
 
     return json({ 
@@ -52,12 +75,34 @@ export async function loader({ request }) {
     // Sync changes from Google Sheets
     const deletedBookings = await sheetsService.syncFromSheets();
 
-    // Update booking statuses in database
+    // Update booking statuses in database and send cancellation emails
     for (const bookingId of deletedBookings) {
-      await prisma.booking.update({
+      const booking = await prisma.booking.findUnique({
         where: { id: bookingId },
-        data: { status: 'CANCELLED' }
+        include: {
+          user: true,
+          service: true,
+          productBookingConfig: true
+        }
       });
+
+      if (booking && booking.status !== 'CANCELLED') {
+        // Update status to cancelled
+        await prisma.booking.update({
+          where: { id: bookingId },
+          data: { status: 'CANCELLED' }
+        });
+
+        // Send cancellation email to customer
+        try {
+          await emailService.sendBookingCancellation(booking, 'Cancelled by manager from Google Sheets');
+          console.log('✅ Cancellation email sent for booking:', bookingId);
+        } catch (emailError) {
+          console.error('❌ Failed to send cancellation email:', emailError);
+        }
+
+        console.log('✅ Cancelled booking from Google Sheets:', bookingId);
+      }
     }
 
     return json({ 

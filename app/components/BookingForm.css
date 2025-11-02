@@ -1,0 +1,287 @@
+/* Custom styling for BookingForm component with brand colors */
+
+/* Override Polaris button colors */
+.Polaris-Button--primary {
+  background: linear-gradient(135deg, #f38820 0%, #753192 100%) !important;
+  border-color: #f38820 !important;
+}
+
+.Polaris-Button--primary:hover {
+  background: linear-gradient(135deg, #e67a1a 0%, #6b2d7f 100%) !important;
+  border-color: #e67a1a !important;
+}
+
+/* Override Polaris text field focus colors */
+.Polaris-TextField__Input:focus {
+  border-color: #f38820 !important;
+  box-shadow: 0 0 0 1px #f38820 !important;
+}
+
+.Polaris-Select__Input:focus {
+  border-color: #f38820 !important;
+  box-shadow: 0 0 0 1px #f38820 !important;
+}
+
+/* Override Polaris badge colors */
+.Polaris-Badge--status-info {
+  background-color: #f38820 !important;
+  color: white !important;
+}
+
+.Polaris-Badge--status-success {
+  background-color: #753192 !important;
+  color: white !important;
+}
+
+/* Override Polaris modal header */
+.Polaris-Modal__Header {
+  background: linear-gradient(135deg, #f38820 0%, #753192 100%) !important;
+  color: white !important;
+}
+
+/* Override Polaris card styling */
+.Polaris-Card {
+  border-color: #f38820 !important;
+}
+
+/* Override Polaris divider */
+.Polaris-Divider {
+  background-color: #f38820 !important;
+}
+
+/* Custom styling for step indicators */
+.booking-step-indicator {
+  display: flex;
+  justify-content: space-between;
+  margin: 20px 0;
+  padding: 0 20px;
+}
+
+.booking-step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 15px 20px;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  background: #f8fafc;
+  border: 2px solid transparent;
+  min-width: 120px;
+}
+
+.booking-step.active {
+  background: linear-gradient(135deg, #f38820 0%, #753192 100%);
+  color: white;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 20px rgba(243, 136, 32, 0.3);
+}
+
+.booking-step-icon {
+  font-size: 24px;
+  margin-bottom: 8px;
+}
+
+.booking-step-text {
+  font-size: 14px;
+  font-weight: 600;
+  text-align: center;
+}
+
+/* Custom form styling */
+.booking-form-container {
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+}
+
+.booking-form-header {
+  background: linear-gradient(135deg, #f38820 0%, #753192 100%);
+  color: white;
+  padding: 30px;
+  text-align: center;
+}
+
+.booking-form-header h2 {
+  margin: 0 0 10px 0;
+  font-size: 24px;
+  font-weight: 700;
+}
+
+.booking-form-content {
+  padding: 30px;
+}
+
+/* Custom input styling */
+.custom-input {
+  width: 100%;
+  padding: 12px;
+  border: 2px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 16px;
+  transition: border-color 0.2s ease;
+}
+
+.custom-input:focus {
+  outline: none;
+  border-color: #f38820;
+  box-shadow: 0 0 0 3px rgba(243, 136, 32, 0.1);
+}
+
+/* Custom button styling */
+.custom-button {
+  padding: 15px 30px;
+  border: none;
+  border-radius: 8px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.custom-button-primary {
+  background: linear-gradient(135deg, #f38820 0%, #753192 100%);
+  color: white;
+}
+
+.custom-button-primary:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 20px rgba(243, 136, 32, 0.3);
+}
+
+.custom-button-secondary {
+  background: #f7fafc;
+  color: #4a5568;
+  border: 2px solid #e2e8f0;
+}
+
+.custom-button-secondary:hover {
+  background: #edf2f7;
+  border-color: #cbd5e0;
+}
+
+.custom-button:disabled {
+  background: #a0aec0;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+/* Custom card styling */
+.custom-card {
+  background: white;
+  padding: 25px;
+  border-radius: 12px;
+  border: 2px solid #e2e8f0;
+  margin-bottom: 30px;
+}
+
+.custom-card-header {
+  font-size: 18px;
+  color: #2d3748;
+  margin-bottom: 15px;
+  padding-bottom: 10px;
+  border-bottom: 2px solid #e2e8f0;
+}
+
+/* Custom summary styling */
+.custom-summary {
+  background: linear-gradient(135deg, #48bb78 0%, #38a169 100%);
+  color: white;
+  padding: 20px;
+  border-radius: 12px;
+  margin-bottom: 20px;
+}
+
+.custom-summary h4 {
+  margin-bottom: 15px;
+  font-size: 18px;
+}
+
+.custom-summary-details {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 15px;
+}
+
+.custom-summary-item {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.custom-summary-label {
+  font-size: 14px;
+  opacity: 0.9;
+}
+
+.custom-summary-value {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+/* Step actions styling */
+.step-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 30px;
+}
+
+.button-group {
+  display: flex;
+  gap: 15px;
+}
+
+/* Service info styling */
+.service-info h3 {
+  margin: 10px 0 5px 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.price-display {
+  font-size: 24px;
+  font-weight: 700;
+  margin-top: 10px;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+  .booking-step-indicator {
+    flex-direction: column;
+    gap: 10px;
+    padding: 0 10px;
+  }
+  
+  .booking-step {
+    min-width: auto;
+    padding: 12px 15px;
+  }
+  
+  .booking-step-icon {
+    font-size: 20px;
+  }
+  
+  .booking-step-text {
+    font-size: 12px;
+  }
+  
+  .custom-summary-details {
+    grid-template-columns: 1fr;
+  }
+  
+  .step-actions {
+    flex-direction: column;
+    gap: 15px;
+  }
+  
+  .custom-button {
+    width: 100%;
+    justify-content: center;
+  }
+}

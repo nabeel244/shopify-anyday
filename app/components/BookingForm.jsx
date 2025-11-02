@@ -17,6 +17,7 @@ import {
   Box
 } from '@shopify/polaris';
 import { format, addDays, isAfter, isBefore, startOfDay } from 'date-fns';
+import './BookingForm.css';
 
 const BookingForm = ({ productId, productTitle, productPrice, bookingConfig, onClose, onSuccess }) => {
   const fetcher = useFetcher();
@@ -34,6 +35,7 @@ const BookingForm = ({ productId, productTitle, productPrice, bookingConfig, onC
     specialRequests: ''
   });
   const [availableTimes, setAvailableTimes] = useState([]);
+  const [bookedSlots, setBookedSlots] = useState([]);
   const [errors, setErrors] = useState({});
   const [isLoading, setIsLoading] = useState(false);
 
@@ -47,21 +49,45 @@ const BookingForm = ({ productId, productTitle, productPrice, bookingConfig, onC
   const loadAvailableTimes = async () => {
     setIsLoading(true);
     try {
-      // Use configured time slots if available
-      if (bookingConfig && bookingConfig.timeSlots) {
-        const configuredSlots = bookingConfig.timeSlots.map(slot => ({
-          label: slot,
-          value: slot
-        }));
-        setAvailableTimes(configuredSlots);
-      } else {
-        // Fallback to generated time slots
-        setAvailableTimes(generateTimeSlots());
+      const dateString = format(formData.bookingDate, 'yyyy-MM-dd');
+      
+      // Build query parameters
+      const params = new URLSearchParams({
+        date: dateString
+      });
+      
+      if (bookingConfig?.id) {
+        params.append('productBookingConfigId', bookingConfig.id);
       }
+
+      console.log('🔍 Fetching availability for:', dateString);
+      console.log('🔍 Product Booking Config ID:', bookingConfig?.id);
+
+      const response = await fetch(`/api/availability?${params}`);
+      const data = await response.json();
+
+      if (data.error) {
+        console.error('Availability API error:', data.error);
+        setAvailableTimes([]);
+        return;
+      }
+
+      console.log('🔍 Available times received:', data.availableTimes);
+      console.log('🔍 Booked slots:', data.bookedSlots);
+
+      // Convert available times to select options
+      const timeOptions = data.availableTimes.map(time => ({
+        label: time,
+        value: time
+      }));
+
+      setAvailableTimes(timeOptions);
+      setBookedSlots(data.bookedSlots || []);
     } catch (error) {
       console.error('Failed to load available times:', error);
       // Fallback to generated time slots
       setAvailableTimes(generateTimeSlots());
+      setBookedSlots([]);
     } finally {
       setIsLoading(false);
     }
@@ -251,7 +277,7 @@ const BookingForm = ({ productId, productTitle, productPrice, bookingConfig, onC
           label="Available Time Slots"
           options={[
             { label: 'Select a time...', value: '' },
-            ...generateTimeSlots()
+            ...availableTimes
           ]}
           value={formData.startTime}
           onChange={(value) => handleInputChange('startTime', value)}
@@ -260,6 +286,22 @@ const BookingForm = ({ productId, productTitle, productPrice, bookingConfig, onC
         />
         
         {isLoading && <Spinner size="small" />}
+        
+        {bookedSlots.length > 0 && (
+          <Card>
+            <Box padding="300">
+              <BlockStack gap="200">
+                <Text variant="headingSm">📅 Already Booked Slots</Text>
+                {bookedSlots.map((slot, index) => (
+                  <InlineStack key={index} align="space-between">
+                    <Text variant="bodyMd">{slot.time}</Text>
+                    <Badge status="attention">{slot.customer}</Badge>
+                  </InlineStack>
+                ))}
+              </BlockStack>
+            </Box>
+          </Card>
+        )}
         
         <TextField
           label="Special Requests (Optional)"
@@ -320,7 +362,7 @@ const BookingForm = ({ productId, productTitle, productPrice, bookingConfig, onC
             
             <InlineStack align="space-between">
               <Text variant="bodyMd"><strong>Duration:</strong></Text>
-              <Text variant="bodyMd">{selectedService.duration} minutes</Text>
+              <Text variant="bodyMd">{bookingConfig?.duration || 480} minutes</Text>
             </InlineStack>
             
             {formData.specialRequests && (
@@ -337,7 +379,7 @@ const BookingForm = ({ productId, productTitle, productPrice, bookingConfig, onC
             
             <InlineStack align="space-between">
               <Text variant="headingSm"><strong>Total Price:</strong></Text>
-              <Badge status="success" size="large">${selectedService.price}</Badge>
+              <Badge status="success" size="large">${formData.productPrice}</Badge>
             </InlineStack>
           </BlockStack>
         </Card>
@@ -359,40 +401,52 @@ const BookingForm = ({ productId, productTitle, productPrice, bookingConfig, onC
     const isSubmitting = fetcher.state === 'submitting';
     
     return (
-      <InlineStack align="space-between">
-        <InlineStack gap="200">
+      <div className="step-actions">
+        <div className="button-group">
           {currentStep > 1 && (
-            <Button onClick={handlePrevious} disabled={isSubmitting}>
-              Previous
-            </Button>
-          )}
-        </InlineStack>
-        
-        <InlineStack gap="200">
-          {currentStep < 4 ? (
-            <Button variant="primary" onClick={handleNext} disabled={isSubmitting}>
-              Next
-            </Button>
-          ) : (
-            <Button 
-              variant="primary" 
-              onClick={handleSubmit} 
-              loading={isSubmitting}
+            <button 
+              className="custom-button custom-button-secondary" 
+              onClick={handlePrevious} 
               disabled={isSubmitting}
             >
-              Confirm Booking
-            </Button>
+              ← Previous
+            </button>
           )}
-        </InlineStack>
-      </InlineStack>
+        </div>
+        
+        <div className="button-group">
+          {currentStep < 4 ? (
+            <button 
+              className="custom-button custom-button-primary" 
+              onClick={handleNext} 
+              disabled={isSubmitting}
+            >
+              Next →
+            </button>
+          ) : (
+            <button 
+              className="custom-button custom-button-primary" 
+              onClick={handleSubmit} 
+              disabled={isSubmitting}
+            >
+              {isSubmitting ? '⏳ Processing...' : '🎉 Confirm My Booking!'}
+            </button>
+          )}
+        </div>
+      </div>
     );
   };
 
   // Handle successful booking
   useEffect(() => {
     if (fetcher.data?.success) {
-      onSuccess?.(fetcher.data.booking);
-      onClose?.();
+      if (fetcher.data.checkoutRequired) {
+        // Redirect to payment/checkout
+        window.location.href = `/api/shopify-checkout?bookingId=${fetcher.data.booking.id}`;
+      } else {
+        onSuccess?.(fetcher.data.booking);
+        onClose?.();
+      }
     }
   }, [fetcher.data]);
 
@@ -404,17 +458,29 @@ const BookingForm = ({ productId, productTitle, productPrice, bookingConfig, onC
       large
     >
       <Modal.Section>
-        <BlockStack gap="400">
-          {fetcher.data?.error && (
-            <Banner status="critical">
-              <p>{fetcher.data.error}</p>
-            </Banner>
-          )}
+        <div className="booking-form-container">
+          <div className="booking-form-header">
+            <h2>🎉 Book Your Party!</h2>
+            <div className="service-info">
+              <h3>{productTitle || 'Service'}</h3>
+              <div className="price-display">${productPrice || '0'}</div>
+            </div>
+          </div>
           
-          {renderCurrentStep()}
-          
-          {renderButtons()}
-        </BlockStack>
+          <div className="booking-form-content">
+            <BlockStack gap="400">
+              {fetcher.data?.error && (
+                <Banner status="critical">
+                  <p>{fetcher.data.error}</p>
+                </Banner>
+              )}
+              
+              {renderCurrentStep()}
+              
+              {renderButtons()}
+            </BlockStack>
+          </div>
+        </div>
       </Modal.Section>
     </Modal>
   );

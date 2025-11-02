@@ -1,6 +1,6 @@
 import { json } from "@remix-run/node";
 import { PrismaClient } from "@prisma/client";
-// import { setupGoogleSheetsConfig } from "../services/googleSheets.server.js";
+import { setupGoogleSheetsConfig } from "../services/googleSheets.server.js";
 
 const prisma = new PrismaClient();
 
@@ -27,9 +27,8 @@ export async function action({ request }) {
       return json({ error: 'Invalid credentials JSON format' }, { status: 400 });
     }
 
-    // Setup Google Sheets configuration - temporarily disabled
-    // await setupGoogleSheetsConfig('default-shop', spreadsheetId, sheetName, JSON.parse(credentials));
-    console.log('Google Sheets configuration temporarily disabled');
+    // Setup Google Sheets configuration
+    await setupGoogleSheetsConfig('default-shop', spreadsheetId, sheetName, JSON.parse(credentials));
 
     return json({ success: true, message: 'Google Sheets configuration saved successfully' });
 

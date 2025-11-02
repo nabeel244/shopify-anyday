@@ -7,7 +7,9 @@
     <!-- Booking widget will be inserted here -->
   </div>
   <div id="loadingMessage" style="text-align: center; padding: 20px;">
+    <div class="loading-spinner">⏳</div>
     <p>Loading booking options...</p>
+    <p style="font-size: 12px; color: #666; margin-top: 10px;">Please wait while we set up your booking experience...</p>
   </div>
 </div>
 
@@ -15,44 +17,26 @@
 console.log('🔍 Simple Booking Widget Loaded');
 
 // Use your current ngrok URL
-const APP_BASE_URL = 'https://e8aa19ec7ecb.ngrok-free.app';
+const APP_BASE_URL = 'https://4dd5fa480830.ngrok-free.app';
 
-// Helper functions
-function formatTime(timeString) {
-  const [hours, minutes] = timeString.split(':');
-  const hour = parseInt(hours);
-  const ampm = hour >= 12 ? 'PM' : 'AM';
-  const displayHour = hour % 12 || 12;
-  return `${displayHour}:${minutes} ${ampm}`;
-}
+// Booking conflict prevention
+let existingBookings = {};
+let bookingConfig = null;
+let globalConfig = null; // Store config globally for Flatpickr access
 
-function formatTimeRange(range) {
-  const formatTime = (timeStr) => {
-    const [hours, minutes] = timeStr.split(':');
-    const hour = parseInt(hours);
-    const ampm = hour >= 12 ? 'PM' : 'AM';
-    const displayHour = hour % 12 || 12;
-    return `${displayHour}:${minutes} ${ampm}`;
-  };
-  
-  const duration = Math.floor(range.duration / 60);
-  const durationMinutes = range.duration % 60;
-  const durationStr = durationMinutes > 0 ? `${duration}h ${durationMinutes}m` : `${duration}h`;
-  
-  return `${formatTime(range.start)} - ${formatTime(range.end)} (${durationStr})`;
-}
-
-async function loadBookingConfig() {
-  const productId = '{{ product.id }}';
-  
-  console.log('🔍 Loading booking config for product:', productId);
-  console.log('🔍 APP_BASE_URL:', APP_BASE_URL);
-  
+async function loadExistingBookings() {
   try {
-    const url = `${APP_BASE_URL}/api/product-booking-check?productId=${productId}`;
-    console.log('🔍 Fetching URL:', url);
+    // Load bookings for the next 30 days to disable booked dates
+    const today = new Date();
+    const futureDate = new Date();
+    futureDate.setDate(today.getDate() + 30);
     
-    const response = await fetch(url, {
+    const startDateStr = today.toISOString().split('T')[0];
+    const endDateStr = futureDate.toISOString().split('T')[0];
+    
+    console.log('🔍 Fetching bookings from:', `${APP_BASE_URL}/api/bookings_check?startDate=${startDateStr}&endDate=${endDateStr}`);
+    
+    const response = await fetch(`${APP_BASE_URL}/api/bookings_check?startDate=${startDateStr}&endDate=${endDateStr}`, {
       headers: {
         'ngrok-skip-browser-warning': 'true'
       }
@@ -61,7 +45,182 @@ async function loadBookingConfig() {
     console.log('🔍 Response status:', response.status);
     console.log('🔍 Response ok:', response.ok);
     
+    if (response.ok) {
+      const data = await response.json();
+      console.log('🔍 Response data:', data);
+      if (data.bookings) {
+        window.existingBookings = data.bookings;
+        console.log('🔍 Loaded existing bookings:', data.bookings.length);
+        
+        // Process bookings to create a date-based lookup
+        window.bookedDates = {};
+        window.bookedTimes = {};
+        
+        data.bookings.forEach(booking => {
+          const bookingDate = new Date(booking.date).toISOString().split('T')[0];
+          
+          // Store booked dates
+          if (!window.bookedDates[bookingDate]) {
+            window.bookedDates[bookingDate] = [];
+          }
+          window.bookedDates[bookingDate].push({
+            startTime: booking.time.split(' - ')[0],
+            endTime: booking.time.split(' - ')[1],
+            customer: booking.customer
+          });
+        });
+        
+        console.log('🔍 Processed booked dates:', Object.keys(window.bookedDates));
+      } else {
+        window.existingBookings = [];
+        window.bookedDates = {};
+        window.bookedTimes = {};
+        console.log('🔍 No existing bookings found');
+      }
+    } else {
+      console.error('❌ Failed to load bookings:', response.status);
+      console.error('❌ Response text:', await response.text());
+      window.existingBookings = [];
+      window.bookedDates = {};
+      window.bookedTimes = {};
+    }
+  } catch (error) {
+    console.error('❌ Error loading existing bookings:', error);
+    window.existingBookings = [];
+    window.bookedDates = {};
+    window.bookedTimes = {};
+  }
+}
+
+function isTimeSlotBooked(dateStr, startTime, endTime) {
+  if (!window.bookedDates || !window.bookedDates[dateStr]) {
+    return false;
+  }
+  
+  const dayBookings = window.bookedDates[dateStr];
+  
+  // Check if any existing booking overlaps with the requested time slot
+  return dayBookings.some(booking => {
+    const requestedStart = timeToMinutes(startTime);
+    const requestedEnd = timeToMinutes(endTime);
+    const bookingStart = timeToMinutes(booking.startTime);
+    const bookingEnd = timeToMinutes(booking.endTime);
+    
+    // Check for overlap
+    return (requestedStart < bookingEnd && requestedEnd > bookingStart);
+  });
+}
+
+function timeToMinutes(timeStr) {
+  const [hours, minutes] = timeStr.split(':').map(Number);
+  return hours * 60 + minutes;
+}
+
+// Function to refresh availability for a specific date
+async function refreshAvailabilityForDate(dateStr) {
+  try {
+    console.log('🔍 Refreshing availability for date:', dateStr);
+    
+    // Fetch fresh booking data for this specific date
+    const response = await fetch(`${APP_BASE_URL}/api/bookings_check?date=${dateStr}`, {
+      headers: {
+        'ngrok-skip-browser-warning': 'true'
+      }
+    });
+    
+    if (response.ok) {
+      const data = await response.json();
+      if (data.bookings) {
+        // Update the booked dates for this specific date
+        if (!window.bookedDates) {
+          window.bookedDates = {};
+        }
+        
+        // Clear existing bookings for this date
+        window.bookedDates[dateStr] = [];
+        
+        // Add new bookings for this date
+        data.bookings.forEach(booking => {
+          window.bookedDates[dateStr].push({
+            startTime: booking.time.split(' - ')[0],
+            endTime: booking.time.split(' - ')[1],
+            customer: booking.customer
+          });
+        });
+        
+        console.log('🔍 Updated availability for', dateStr, ':', window.bookedDates[dateStr].length, 'bookings');
+        
+        // Refresh the time ranges display
+        if (window.bookingConfig && window.bookingConfig.timeRanges) {
+          showTimeRanges(window.bookingConfig.timeRanges);
+        }
+      }
+    }
+  } catch (error) {
+    console.error('❌ Error refreshing availability:', error);
+  }
+}
+
+function isDateFullyBooked(dateStr) {
+  if (!window.existingBookings || !Array.isArray(window.existingBookings)) {
+    return false;
+  }
+  
+  // Count bookings for this specific date
+  const dayBookings = window.existingBookings.filter(booking => {
+    const bookingDate = new Date(booking.date).toISOString().split('T')[0];
+    return bookingDate === dateStr;
+  });
+  
+  const maxBookings = bookingConfig?.maxBookings || 1;
+  
+  // If we don't have config yet, use a conservative approach
+  // Check if there are any bookings at all for this date
+  if (!globalConfig || !globalConfig.timeRanges) {
+    return dayBookings.length > 0;
+  }
+  
+  // Check if all time slots for this date are fully booked
+  return dayBookings.length >= globalConfig.timeRanges.length * maxBookings;
+}
+
+// Load Flatpickr CSS and JS
+const loadFlatpickr = () => {
+  return new Promise((resolve) => {
+    // Load CSS
+    const cssLink = document.createElement('link');
+    cssLink.rel = 'stylesheet';
+    cssLink.href = 'https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css';
+    document.head.appendChild(cssLink);
+    
+    // Load JS
+    const script = document.createElement('script');
+    script.src = 'https://cdn.jsdelivr.net/npm/flatpickr';
+    script.onload = () => {
+      console.log('✅ Flatpickr loaded successfully');
+      resolve();
+    };
+    document.head.appendChild(script);
+  });
+};
+
+async function loadBookingConfig() {
+  const productId = '{{ product.id }}';
+  
+  console.log('🔍 Loading booking config for product:', productId);
+  
+  try {
+    const response = await fetch(`${APP_BASE_URL}/api/product-booking-check?productId=${productId}`, {
+      headers: {
+        'ngrok-skip-browser-warning': 'true'
+      }
+    });
+    
+    console.log('🔍 Response status:', response.status);
+    
     if (!response.ok) {
+      const errorText = await response.text();
+      console.error('❌ API Error Response:', errorText);
       throw new Error(`HTTP ${response.status}: ${response.statusText}`);
     }
     
@@ -69,10 +228,10 @@ async function loadBookingConfig() {
     console.log('🔍 API Response:', data);
     
     if (data.hasBooking && data.configuration) {
-      console.log('🔍 Showing booking widget');
+      console.log('🔍 Configuration found, showing widget');
       showBookingWidget(data.configuration);
     } else {
-      console.log('🔍 No booking available, showing message');
+      console.log('🔍 No booking configuration found');
       showNoBookingMessage(data.message || 'Booking not available for this product');
     }
   } catch (error) {
@@ -84,6 +243,22 @@ async function loadBookingConfig() {
 function showBookingWidget(config) {
   const bookingContent = document.getElementById('bookingContent');
   const loadingMessage = document.getElementById('loadingMessage');
+  
+  console.log('🔍 showBookingWidget called with config:', config);
+  
+  // Validate config object
+  if (!config) {
+    console.error('❌ Config is null or undefined');
+    showErrorMessage('Booking configuration is not available');
+    return;
+  }
+  
+  // Validate required config properties
+  if (!config.productTitle || !config.productPrice) {
+    console.error('❌ Missing required config properties:', config);
+    showErrorMessage('Invalid booking configuration');
+    return;
+  }
   
   loadingMessage.style.display = 'none';
   bookingContent.style.display = 'block';
@@ -103,165 +278,213 @@ function showBookingWidget(config) {
     <div class="booking-container">
       <!-- Header -->
       <div class="booking-header">
-        <h2>📅 Book ${config.productTitle}</h2>
+        <h2>🎉 Book Your Party!</h2>
+        <div class="service-info">
+          <h3>${config.productTitle || 'Service'}</h3>
         ${config.city ? `<p class="location">📍 ${config.city}</p>` : ''}
-        <p class="price">$${config.productPrice}</p>
+          <div class="price-display">$${config.productPrice || '0'}</div>
+        </div>
       </div>
 
       <!-- Progress Steps -->
-      <div class="progress-steps">
-        <div class="step active" id="step1">
-          <div class="step-number">1</div>
-          <div class="step-label">Select Date & Time</div>
+      <div class="progress-tabs">
+        <div class="tab active" data-step="1">
+          <div class="tab-icon">📅</div>
+          <div class="tab-text">Pick Date & Time</div>
         </div>
-        <div class="step" id="step2">
-          <div class="step-number">2</div>
-          <div class="step-label">Your Information</div>
+        <div class="tab" data-step="2">
+          <div class="tab-icon">👤</div>
+          <div class="tab-text">Your Details</div>
         </div>
-        <div class="step" id="step3">
-          <div class="step-number">3</div>
-          <div class="step-label">Confirm Booking</div>
+        <div class="tab" data-step="3">
+          <div class="tab-icon">✅</div>
+          <div class="tab-text">Confirm Booking</div>
         </div>
       </div>
 
+      <!-- Tab Content -->
+      <div class="tab-content">
       <!-- Step 1: Date & Time Selection -->
-      <div class="booking-step" id="dateTimeStep">
-        <div class="step-content">
-          <h3>📅 Select Date & Time</h3>
+        <div class="tab-panel active" id="step1">
+          <div class="step-header">
+            {% comment %} <h3>📅 When would you like your party?</h3> {% endcomment %}
+            <p>Choose date and time!</p>
+          </div>
           
-          <!-- Admin's Configuration Display -->
-          <div class="admin-config-info">
-            <h4>📋 Available Options</h4>
-            
-            <div class="config-section">
-              <h5>📅 Available Days</h5>
+          <div class="selection-container">
+            <div class="date-selection">
+              <h4>🗓️ Pick a Date</h4>
+              <div class="date-picker-container">
+                <input type="text" id="bookingDate" name="bookingDate" placeholder="Click to choose your date..." readonly required>
+              </div>
+              {% comment %} <div class="available-days-info">
+                <p>Available on:</p>
               <div class="available-days">
                 ${config.availableDays.map(day => `
                   <span class="day-badge">${day.charAt(0).toUpperCase() + day.slice(1)}</span>
                 `).join('')}
               </div>
+            </div> {% endcomment %}
             </div>
+          </div>
 
-            ${config.bookingStartDate && config.bookingEndDate ? `
-            <div class="config-section">
-              <h5>📆 Booking Period</h5>
-              <p class="date-range">
-                ${new Date(config.bookingStartDate).toLocaleDateString('en-US', { 
-                  month: 'long', 
-                  day: 'numeric', 
-                  year: 'numeric' 
-                })} - ${new Date(config.bookingEndDate).toLocaleDateString('en-US', { 
-                  month: 'long', 
-                  day: 'numeric', 
-                  year: 'numeric' 
-                })}
-              </p>
-            </div>
-            ` : ''}
-
-            <div class="config-section">
-              <h5>⏰ Available Time Ranges</h5>
-              <div class="time-ranges-display">
-                ${config.timeRanges && config.timeRanges.length > 0 ? 
-                  config.timeRanges.map(range => `
-                    <span class="time-range-badge">${formatTimeRange(range)}</span>
-                  `).join('') :
-                  config.timeSlots.map(slot => `
-                    <span class="time-slot-badge">${formatTime(slot)}</span>
-                  `).join('')
-                }
+          <div class="time-selection-container">
+            <div class="time-selection">
+              <h4>⏰ Pick a Time</h4>
+              <div class="time-ranges" id="timeRanges">
+                <div class="no-time-message">
+                  <p>👆 First, pick a date above!</p>
               </div>
             </div>
-          </div>
-
-          <!-- Calendar -->
-          <div class="calendar-section">
-            <h4>📅 Choose Your Date</h4>
-            <div class="calendar-container">
-              <div class="calendar-header">
-                <button type="button" id="prevMonth" class="nav-button">‹</button>
-                <h5 id="calendarMonthYear" class="month-year"></h5>
-                <button type="button" id="nextMonth" class="nav-button">›</button>
-              </div>
-              <div class="calendar-grid" id="calendarGrid"></div>
             </div>
           </div>
 
-          <!-- Time Selection -->
-          <div class="time-section">
-            <h4>⏰ Choose Your Time</h4>
-            <div class="time-ranges" id="timeRanges">
-              <p class="no-time-message">Please select a date first</p>
-            </div>
-          </div>
-
-          <!-- Selected Summary -->
-          <div class="selection-summary" id="selectionSummary" style="display: none;">
+          <div class="step-summary" id="step1Summary" style="display: none;">
             <h4>✅ Your Selection</h4>
-            <div class="selected-info">
-              <div class="selected-item">
-                <span class="label">Date:</span>
+            <div class="selection-details">
+              <div class="detail-item">
+                <span class="label">📅 Date:</span>
                 <span class="value" id="selectedDateDisplay">-</span>
               </div>
-              <div class="selected-item">
-                <span class="label">Time:</span>
+              <div class="detail-item">
+                <span class="label">⏰ Time:</span>
                 <span class="value" id="selectedTimeDisplay">-</span>
               </div>
             </div>
-            <button type="button" class="next-step-btn" id="nextToForm" disabled>
-              Continue to Information →
+          </div>
+
+          <div class="step-actions">
+            <button type="button" class="next-btn" id="nextToStep2" disabled>
+              Next: Your Details →
             </button>
           </div>
         </div>
-      </div>
 
-      <!-- Step 2: Form -->
-      <div class="booking-step" id="formStep" style="display: none;">
-        <div class="step-content">
-          <h3>👤 Your Information</h3>
+        <!-- Step 2: Personal Information -->
+        <div class="tab-panel" id="step2">
+          <div class="step-header">
+            <h3>👤 Tell us about yourself!</h3>
+            <p>We need some details to confirm your booking.</p>
+      </div>
           
           <form id="bookingForm" class="booking-form">
             <div class="form-section">
-              <h4>Personal Details</h4>
+              <h4>📝 Your Name</h4>
               <div class="form-row">
-                <input type="text" name="firstName" placeholder="First Name" required>
-                <input type="text" name="lastName" placeholder="Last Name" required>
+                <div class="input-group">
+                  <label for="firstName">First Name</label>
+                  <input type="text" id="firstName" name="firstName" placeholder="Enter your first name" required>
               </div>
+                <div class="input-group">
+                  <label for="lastName">Last Name</label>
+                  <input type="text" id="lastName" name="lastName" placeholder="Enter your last name" required>
+                </div>
+              </div>
+            </div>
+
+            <div class="form-section">
+              <h4>📞 Contact Information</h4>
               <div class="form-row">
-                <input type="email" name="email" placeholder="Email Address" required>
-                <input type="tel" name="phone" placeholder="Phone Number" required>
+                <div class="input-group">
+                  <label for="email">Email Address</label>
+                  <input type="email" id="email" name="email" placeholder="your.email@example.com" required>
+                </div>
+                <div class="input-group">
+                  <label for="phone">Phone Number</label>
+                  <input type="tel" id="phone" name="phone" placeholder="(555) 123-4567" required>
+                </div>
               </div>
             </div>
 
-            ${config.services && config.services.length > 0 ? `
+        ${config.services && config.services.length > 0 ? `
+        <div class="form-section">
+          <h4>🎁 Extra Services (Optional)</h4>
+          <div class="services-grid">
+            ${config.services.map(service => `
+              <button type="button" class="service-button" data-service-id="${service.id}" data-price="${service.price}" data-name="${service.name}">
+                <div class="service-content">
+                  <div class="service-name">${service.name}</div>
+                  <div class="service-price">+$${service.price}</div>
+                </div>
+                <div class="service-selected-indicator">✓</div>
+              </button>
+            `).join('')}
+          </div>
+        </div>
+        ` : ''}
+
             <div class="form-section">
-              <h4>🛠️ Additional Services</h4>
-              <div class="services-list">
-                ${config.services.map(service => `
-                  <label class="service-item">
-                    <input type="checkbox" name="services" value="${service.id}" data-price="${service.price}">
-                    <span class="service-name">${service.name}</span>
-                    <span class="service-price">+$${service.price}</span>
-                  </label>
-                `).join('')}
+              <h4>💭 Special Requests (Optional)</h4>
+              <div class="input-group">
+                <label for="notes">Any special requests or notes?</label>
+                <textarea id="notes" name="notes" placeholder="Tell us anything special you'd like for your party..." rows="3"></textarea>
               </div>
             </div>
-            ` : ''}
 
-            <div class="form-section">
-              <h4>📝 Special Requests</h4>
-              <textarea name="notes" placeholder="Any special requests or notes..." rows="3"></textarea>
+            <!-- Hidden fields -->
+            <input type="hidden" name="startTime" value="">
+            <input type="hidden" name="endTime" value="">
+
+            <div class="step-actions">
+              <button type="button" class="back-btn" id="backToStep1">
+                ← Back to Date & Time
+              </button>
+              <button type="button" class="next-btn" id="nextToStep3">
+                Next: Confirm Booking →
+              </button>
+            </div>
+          </form>
+        </div>
+
+        <!-- Step 3: Confirmation -->
+        <div class="tab-panel" id="step3">
+          <div class="step-header">
+            <h3>✅ Almost Done!</h3>
+            <p>Please review your booking details and confirm.</p>
+          </div>
+
+          <div class="confirmation-summary">
+            <div class="summary-section">
+              <h4>📅 Booking Details</h4>
+              <div class="summary-item">
+                <span class="label">Service:</span>
+                <span class="value">${config.productTitle}</span>
+              </div>
+              <div class="summary-item">
+                <span class="label">Date:</span>
+                <span class="value" id="confirmDate">-</span>
+              </div>
+              <div class="summary-item">
+                <span class="label">Time:</span>
+                <span class="value" id="confirmTime">-</span>
+              </div>
             </div>
 
-            <div class="form-section">
+            <div class="summary-section">
+              <h4>👤 Your Information</h4>
+              <div class="summary-item">
+                <span class="label">Name:</span>
+                <span class="value" id="confirmName">-</span>
+              </div>
+              <div class="summary-item">
+                <span class="label">Email:</span>
+                <span class="value" id="confirmEmail">-</span>
+              </div>
+              <div class="summary-item">
+                <span class="label">Phone:</span>
+                <span class="value" id="confirmPhone">-</span>
+              </div>
+            </div>
+
+            <div class="summary-section">
               <h4>💰 Price Summary</h4>
-              <div class="price-summary">
+              <div class="price-breakdown">
                 <div class="price-item">
                   <span>Base Price:</span>
                   <span>$${config.productPrice}</span>
                 </div>
                 <div class="price-item" id="servicesPrice" style="display: none;">
-                  <span>Additional Services:</span>
+                  <span>Extra Services:</span>
                   <span id="servicesTotal">$0.00</span>
                 </div>
                 <div class="price-divider"></div>
@@ -269,60 +492,221 @@ function showBookingWidget(config) {
                   <span>Total:</span>
                   <span id="totalPrice">$${config.productPrice}</span>
                 </div>
+                </div>
               </div>
             </div>
 
-            <!-- Hidden fields -->
-            <input type="hidden" id="bookingDate" name="bookingDate" required>
-            <input type="hidden" name="startTime" value="">
-            <input type="hidden" name="endTime" value="">
-
-            <div class="form-actions">
-              <button type="button" class="back-btn" id="backToDateTime">
-                ← Back to Date & Time
+          <div class="step-actions">
+            <button type="button" class="back-btn" id="backToStep2">
+              ← Back to Your Details
               </button>
-              <button type="submit" class="book-button">
-                📅 Confirm Booking
+            <button type="submit" class="confirm-btn" id="confirmBooking">
+              🎉 Confirm My Booking!
               </button>
             </div>
-          </form>
         </div>
       </div>
 
-      <!-- Step 3: Confirmation -->
-      <div class="booking-step" id="confirmationStep" style="display: none;">
-        <div class="step-content">
-          <div id="bookingMessage"></div>
-        </div>
-      </div>
+      <div id="bookingMessage" class="booking-message" style="display: none;"></div>
     </div>
   `;
 
-  setupBookingForm(config);
+  // Load Flatpickr first, then setup the form
+  loadFlatpickr().then(() => {
+    // Wait a bit for the HTML to be fully rendered
+    setTimeout(() => {
+      setupBookingForm(config);
+    }, 50);
+  });
+}
+
+function setupFlatpickrCalendar(config) {
+  const dateInput = document.getElementById('bookingDate');
+  
+  // Check if the element exists before proceeding
+  if (!dateInput) {
+    console.log('🔍 Date input not found, skipping calendar setup');
+    return;
+  }
+  
+  // Store config globally for access in disable function
+  globalConfig = config;
+  
+  console.log('🔍 Setting up Flatpickr with config:', config);
+  
+  // Create disabled dates array
+  const disabledDates = [];
+  
+  // Add past dates
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  
+  // Configure Flatpickr
+  const flatpickrConfig = {
+    dateFormat: 'Y-m-d',
+    minDate: today,
+    enableTime: false,
+    static: true, // Always show calendar
+    disable: [
+      function(date) {
+        try {
+          // Disable past dates
+          if (date < today) return true;
+          
+          // Only apply config-based restrictions if config is available
+          if (globalConfig && globalConfig.availableDays) {
+            // Disable unavailable days of the week
+            const dayName = date.toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase();
+            if (!globalConfig.availableDays.includes(dayName)) return true;
+            
+            // Disable dates outside booking range
+            if (globalConfig.bookingStartDate && globalConfig.bookingEndDate) {
+              const startDate = new Date(globalConfig.bookingStartDate);
+              const endDate = new Date(globalConfig.bookingEndDate);
+              if (date < startDate || date > endDate) return true;
+            }
+          }
+          
+          // Disable fully booked dates (this function handles missing config gracefully)
+          const dateStr = date.toISOString().split('T')[0];
+          if (isDateFullyBooked(dateStr)) return true;
+          
+          return false;
+        } catch (error) {
+          console.error('❌ Error in Flatpickr disable function:', error);
+          // If there's an error, only disable past dates
+          return date < today;
+        }
+      }
+    ],
+    onChange: function(selectedDates, dateStr, instance) {
+      console.log('🔍 Flatpickr date selected:', dateStr);
+      if (dateStr) {
+        const date = new Date(dateStr);
+        const dayName = date.toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase();
+        console.log('🔍 Selected day:', dayName);
+        
+        // Trigger the form's change event to validate and update displays
+        const changeEvent = new Event('change', { bubbles: true });
+        dateInput.dispatchEvent(changeEvent);
+        
+        // Refresh availability for the selected date
+        refreshAvailabilityForDate(dateStr);
+      }
+    }
+  };
+  
+  // Initialize Flatpickr
+  try {
+    const flatpickrInstance = flatpickr(dateInput, flatpickrConfig);
+    
+    // Store the instance globally so we can refresh it later
+    window.flatpickrInstance = flatpickrInstance;
+    
+    console.log('✅ Flatpickr calendar initialized');
+  } catch (error) {
+    console.error('❌ Error initializing Flatpickr calendar:', error);
+  }
+}
+
+// Fallback calendar setup for when config is not available
+function setupBasicCalendar() {
+  const dateInput = document.getElementById('bookingDate');
+  
+  // Check if the element exists before proceeding
+  if (!dateInput) {
+    console.log('🔍 Date input not found, skipping basic calendar setup');
+    return;
+  }
+  
+  console.log('🔍 Setting up basic calendar without config');
+  
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  
+  const basicConfig = {
+    dateFormat: 'Y-m-d',
+    minDate: today,
+    enableTime: false,
+    static: true,
+    disable: [
+      function(date) {
+        // Only disable past dates for basic setup
+        return date < today;
+      }
+    ],
+    onChange: function(selectedDates, dateStr, instance) {
+      console.log('🔍 Basic calendar date selected:', dateStr);
+      if (dateStr) {
+        // Trigger the form's change event
+        const changeEvent = new Event('change', { bubbles: true });
+        dateInput.dispatchEvent(changeEvent);
+        
+        // Refresh availability for the selected date
+        refreshAvailabilityForDate(dateStr);
+      }
+    }
+  };
+  
+  try {
+    const flatpickrInstance = flatpickr(dateInput, basicConfig);
+    window.flatpickrInstance = flatpickrInstance;
+    console.log('✅ Basic calendar initialized');
+  } catch (error) {
+    console.error('❌ Error initializing basic calendar:', error);
+  }
+}
+
+function refreshFlatpickrCalendar(config) {
+  if (window.flatpickrInstance) {
+    console.log('🔍 Refreshing Flatpickr calendar with full config');
+    try {
+      // Recreate the calendar with the full config
+      window.flatpickrInstance.destroy();
+      setupFlatpickrCalendar(config);
+    } catch (error) {
+      console.error('❌ Error refreshing Flatpickr calendar:', error);
+    }
+  } else {
+    console.log('🔍 No existing Flatpickr instance, setting up new calendar');
+    setupFlatpickrCalendar(config);
+  }
 }
 
 function setupBookingForm(config) {
   const dateInput = document.getElementById('bookingDate');
-  const timeRanges = document.getElementById('timeRanges');
   const bookingForm = document.getElementById('bookingForm');
 
-  // Store config globally for calendar access
+  // Check if required elements exist
+  if (!dateInput || !bookingForm) {
+    console.log('🔍 Required form elements not found, skipping form setup');
+    return;
+  }
+
+  // Store config globally for access in other functions
   window.bookingConfig = config;
+  globalConfig = config;
 
-  // Set up calendar
-  setupCalendar(config);
+  // Set up Flatpickr calendar
+  setupFlatpickrCalendar(config);
 
-  // Handle date selection from calendar
-  window.selectDate = function(dateString) {
-    const selectedDate = new Date(dateString);
-    const dayName = selectedDate.toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase();
-    
-    console.log('🔍 Selected date:', dateString, 'Day:', dayName);
+  // Set up tab navigation
+  setupTabNavigation();
+
+  // Handle date selection
+  dateInput.addEventListener('change', function() {
+    const selectedDate = this.value;
+    if (selectedDate) {
+      const date = new Date(selectedDate);
+      const dayName = date.toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase();
+      
+      console.log('🔍 Selected date:', selectedDate, 'Day:', dayName);
     console.log('🔍 Available days:', config.availableDays);
     
     // Check if selected day is available
     if (!config.availableDays.includes(dayName)) {
       alert(`Sorry, ${dayName.charAt(0).toUpperCase() + dayName.slice(1)} is not available for booking. Please select one of these days: ${config.availableDays.map(d => d.charAt(0).toUpperCase() + d.slice(1)).join(', ')}`);
+        this.value = '';
       return;
     }
 
@@ -331,61 +715,24 @@ function setupBookingForm(config) {
       const startDate = new Date(config.bookingStartDate);
       const endDate = new Date(config.bookingEndDate);
       
-      if (selectedDate < startDate || selectedDate > endDate) {
+        if (date < startDate || date > endDate) {
         alert(`This date is outside the booking period (${config.bookingStartDate} to ${config.bookingEndDate}).`);
+          this.value = '';
         return;
       }
     }
 
-    // Set the hidden input value
-    dateInput.value = dateString;
-
-    // Update selected date display
-    const formattedDate = selectedDate.toLocaleDateString('en-US', { 
-      weekday: 'long', 
-      year: 'numeric', 
-      month: 'long', 
-      day: 'numeric' 
-    });
-    document.getElementById('selectedDateDisplay').textContent = formattedDate;
-
-    // Show time ranges - only the admin's specific time ranges
+      // Update date display
+      updateDateDisplay(selectedDate);
+      
+      // Debug: Check if the input value is properly set
+      console.log('🔍 Date input value after selection:', document.getElementById('bookingDate').value);
+      console.log('🔍 Hidden bookingDate input value:', document.querySelector('input[name="bookingDate"]').value);
+      
+      // Show time ranges
     console.log('🔍 Showing admin\'s specific time ranges:', config.timeRanges);
     showTimeRanges(config.timeRanges || config.timeSlots);
-  };
-
-  // Handle time range selection
-  window.selectTimeRange = function(timeRangeValue) {
-    const isTimeRanges = config.timeRanges && config.timeRanges.length > 0;
-    
-    let timeDisplay = '';
-    if (isTimeRanges) {
-      const range = JSON.parse(timeRangeValue);
-      timeDisplay = formatTimeRange(range);
-      document.querySelector('input[name="startTime"]').value = range.start;
-      document.querySelector('input[name="endTime"]').value = range.end;
-    } else {
-      timeDisplay = formatTime(timeRangeValue);
-      document.querySelector('input[name="startTime"]').value = timeRangeValue;
-      document.querySelector('input[name="endTime"]').value = '';
     }
-    
-    document.getElementById('selectedTimeDisplay').textContent = timeDisplay;
-    
-    // Show selection summary and enable next button
-    document.getElementById('selectionSummary').style.display = 'block';
-    document.getElementById('nextToForm').disabled = false;
-    
-    console.log('🔍 Time range selected:', timeRangeValue);
-  };
-
-  // Handle step navigation
-  document.getElementById('nextToForm').addEventListener('click', function() {
-    showStep(2);
-  });
-
-  document.getElementById('backToDateTime').addEventListener('click', function() {
-    showStep(1);
   });
 
   // Handle service selection
@@ -394,13 +741,34 @@ function setupBookingForm(config) {
     checkbox.addEventListener('change', updateTotalPrice);
   });
 
-  // Handle form submission
-  bookingForm.addEventListener('submit', async function(e) {
+  // Handle form submission (from confirm button)
+  document.getElementById('confirmBooking').addEventListener('click', async function(e) {
     e.preventDefault();
     
-    showStep(3); // Show confirmation step
+    // Validate required fields before proceeding
+    const startTime = document.querySelector('input[name="startTime"]').value;
+    const bookingDate = document.querySelector('input[name="bookingDate"]').value;
     
-    const formData = new FormData(this);
+    console.log('🔍 Form validation - startTime:', startTime);
+    console.log('🔍 Form validation - bookingDate:', bookingDate);
+    
+    if (!startTime) {
+      console.error('❌ No startTime selected');
+      alert('Please select a time slot before proceeding.');
+      return;
+    }
+    
+    if (!bookingDate) {
+      console.error('❌ No bookingDate selected');
+      alert('Please select a date before proceeding.');
+      return;
+    }
+    
+    const formData = new FormData(document.getElementById('bookingForm'));
+    console.log('🔍 FormData bookingDate:', formData.get('bookingDate'));
+    console.log('🔍 FormData startTime:', formData.get('startTime'));
+    console.log('🔍 FormData endTime:', formData.get('endTime'));
+    
     const selectedServices = [];
     
     // Get selected services
@@ -425,7 +793,7 @@ function setupBookingForm(config) {
       lastName: formData.get('lastName'),
       email: formData.get('email'),
       phone: formData.get('phone'),
-      bookingDate: formData.get('bookingDate'),
+      bookingDate: formData.get('bookingDate') || document.getElementById('bookingDate').value,
       startTime: formData.get('startTime'),
       endTime: formData.get('endTime'),
       timeRange: formData.get('timeRange'),
@@ -437,15 +805,24 @@ function setupBookingForm(config) {
       selectedServices: selectedServices,
       productBookingConfigId: config.id
     };
+    
+    // Additional validation and debugging
+    console.log('🔍 Raw bookingDate from FormData:', formData.get('bookingDate'));
+    console.log('🔍 Raw bookingDate from input element:', document.getElementById('bookingDate').value);
+    console.log('🔍 Final bookingDate in bookingData:', bookingData.bookingDate);
+    
+    if (!bookingData.bookingDate) {
+      console.error('❌ bookingDate is still empty!');
+      alert('Please select a date before confirming your booking.');
+      return;
+    }
+    
+    console.log('🔍 Booking data being sent:', bookingData);
 
     // Show loading state
-    const bookingMessage = document.getElementById('bookingMessage');
-    bookingMessage.innerHTML = `
-      <div class="loading-message">
-        <h3>⏳ Processing Your Booking...</h3>
-        <p>Please wait while we confirm your appointment.</p>
-      </div>
-    `;
+    const bookButton = document.getElementById('confirmBooking');
+    bookButton.textContent = '⏳ Processing...';
+    bookButton.disabled = true;
 
     try {
       const response = await fetch(`${APP_BASE_URL}/api/bookings`, {
@@ -460,185 +837,133 @@ function setupBookingForm(config) {
       const result = await response.json();
 
       if (result.success) {
-        showSuccessMessage(bookingData);
+        // Store booking data for Add to Cart
+        storeBookingDataForCart(result.booking);
+        showBookingReadyMessage(result.booking);
       } else {
         throw new Error(result.error || 'Booking failed');
       }
     } catch (error) {
       console.error('Booking error:', error);
       showErrorMessage(error.message);
+    } finally {
+      const bookButton = document.getElementById('confirmBooking');
+      bookButton.textContent = '📅 Book Appointment';
+      bookButton.disabled = false;
     }
   });
+}
+
+// Tab Navigation Functions
+function setupTabNavigation() {
+  // Tab click handlers
+  document.querySelectorAll('.tab').forEach(tab => {
+    tab.addEventListener('click', function() {
+      const step = this.dataset.step;
+      showStep(step);
+    });
+  });
+
+  // Step navigation buttons
+  document.getElementById('nextToStep2').addEventListener('click', () => showStep('2'));
+  document.getElementById('backToStep1').addEventListener('click', () => showStep('1'));
+  document.getElementById('nextToStep3').addEventListener('click', () => showStep('3'));
+  document.getElementById('backToStep2').addEventListener('click', () => showStep('2'));
 }
 
 function showStep(stepNumber) {
-  // Hide all steps
-  document.getElementById('dateTimeStep').style.display = 'none';
-  document.getElementById('formStep').style.display = 'none';
-  document.getElementById('confirmationStep').style.display = 'none';
-  
-  // Remove active class from all steps
-  document.querySelectorAll('.step').forEach(step => step.classList.remove('active'));
-  
+  // Hide all tab panels
+  document.querySelectorAll('.tab-panel').forEach(panel => {
+    panel.classList.remove('active');
+  });
+
+  // Remove active class from all tabs
+  document.querySelectorAll('.tab').forEach(tab => {
+    tab.classList.remove('active');
+  });
+
   // Show selected step
-  if (stepNumber === 1) {
-    document.getElementById('dateTimeStep').style.display = 'block';
-    document.getElementById('step1').classList.add('active');
-  } else if (stepNumber === 2) {
-    document.getElementById('formStep').style.display = 'block';
-    document.getElementById('step2').classList.add('active');
-  } else if (stepNumber === 3) {
-    document.getElementById('confirmationStep').style.display = 'block';
-    document.getElementById('step3').classList.add('active');
+  const targetPanel = document.getElementById(`step${stepNumber}`);
+  const targetTab = document.querySelector(`[data-step="${stepNumber}"]`);
+  
+  if (targetPanel) {
+    targetPanel.classList.add('active');
   }
+  
+  if (targetTab) {
+    targetTab.classList.add('active');
+  }
+
+  // Update confirmation details if going to step 3
+  if (stepNumber === '3') {
+    updateConfirmationDetails();
+  }
+
+  console.log(`🔍 Switched to step ${stepNumber}`);
 }
 
-}
-
-// Calendar setup
-let currentCalendarMonth = new Date().getMonth();
-let currentCalendarYear = new Date().getFullYear();
-
-function setupCalendar(config) {
-  console.log('🔍 Setting up calendar with config:', config);
-  
-  const prevButton = document.getElementById('prevMonth');
-  const nextButton = document.getElementById('nextMonth');
-  
-  if (!prevButton || !nextButton) {
-    console.error('Calendar navigation buttons not found');
-    return;
-  }
-  
-  // Set initial calendar view based on date range or current month
-  if (config.bookingStartDate) {
-    const startDate = new Date(config.bookingStartDate);
-    currentCalendarMonth = startDate.getMonth();
-    currentCalendarYear = startDate.getFullYear();
-    console.log('🔍 Using booking start date for calendar:', config.bookingStartDate);
-  }
-  
-  // Render initial calendar
-  renderCalendar(currentCalendarYear, currentCalendarMonth);
-  
-  // Set up calendar navigation
-  prevButton.addEventListener('click', () => {
-    currentCalendarMonth--;
-    if (currentCalendarMonth < 0) {
-      currentCalendarMonth = 11;
-      currentCalendarYear--;
-    }
-    renderCalendar(currentCalendarYear, currentCalendarMonth);
+function updateDateDisplay(selectedDate) {
+  const date = new Date(selectedDate);
+  const formattedDate = date.toLocaleDateString('en-US', { 
+    weekday: 'long', 
+    year: 'numeric', 
+    month: 'long', 
+    day: 'numeric' 
   });
-
-  nextButton.addEventListener('click', () => {
-    currentCalendarMonth++;
-    if (currentCalendarMonth > 11) {
-      currentCalendarMonth = 0;
-      currentCalendarYear++;
-    }
-    renderCalendar(currentCalendarYear, currentCalendarMonth);
-  });
+  
+  document.getElementById('selectedDateDisplay').textContent = formattedDate;
+  document.getElementById('step1Summary').style.display = 'block';
 }
 
-function renderCalendar(year, month) {
-  console.log('🔍 renderCalendar called with:', { year, month });
+function updateTimeDisplay(timeDisplay) {
+  document.getElementById('selectedTimeDisplay').textContent = timeDisplay;
   
-  const calendarGrid = document.getElementById('calendarGrid');
-  const monthYear = document.getElementById('calendarMonthYear');
-  
-  if (!calendarGrid || !monthYear) {
-    console.error('❌ Calendar elements not found');
-    return;
-  }
-  
-  const monthNames = [
-    'January', 'February', 'March', 'April', 'May', 'June',
-    'July', 'August', 'September', 'October', 'November', 'December'
-  ];
-  
-  monthYear.textContent = `${monthNames[month]} ${year}`;
-  
-  const firstDay = new Date(year, month, 1);
-  const lastDay = new Date(year, month + 1, 0);
-  const daysInMonth = lastDay.getDate();
-  const startingDayOfWeek = firstDay.getDay();
-  
-  let calendarHTML = '<div class="calendar-weekdays"><span>Sun</span><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span></div>';
-  calendarHTML += '<div class="calendar-days">';
-  
-  // Add empty cells for days before the first day of the month
-  for (let i = 0; i < startingDayOfWeek; i++) {
-    calendarHTML += '<div class="calendar-day empty"></div>';
-  }
-  
-  // Add days of the month
-  for (let day = 1; day <= daysInMonth; day++) {
-    const date = new Date(year, month, day);
-    const dateString = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-    const dayName = date.toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase();
-    
-    let dayClass = 'calendar-day';
-    let isClickable = true;
-    let statusText = '';
-    
-    // Check if date is in the past
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    if (date < today) {
-      dayClass += ' past';
-      isClickable = false;
-      statusText = 'Past';
-    }
-    // Check if date is outside booking date range
-    else if (window.bookingConfig && window.bookingConfig.bookingStartDate && window.bookingConfig.bookingEndDate) {
-      const startDate = new Date(window.bookingConfig.bookingStartDate);
-      const endDate = new Date(window.bookingConfig.bookingEndDate);
-      startDate.setHours(0, 0, 0, 0);
-      endDate.setHours(23, 59, 59, 999);
-      
-      if (date < startDate || date > endDate) {
-        dayClass += ' outside-range';
-        isClickable = false;
-        statusText = 'Outside Date Range';
-      }
-      // Check if day is available
-      else if (!window.bookingConfig.availableDays.includes(dayName)) {
-        dayClass += ' unavailable';
-        isClickable = false;
-        statusText = 'Unavailable Day';
-      }
-      else {
-        dayClass += ' available';
-        isClickable = true;
-        statusText = 'Available';
-      }
-    }
-    // Check if day is available
-    else if (!window.bookingConfig || !window.bookingConfig.availableDays || !window.bookingConfig.availableDays.includes(dayName)) {
-      dayClass += ' unavailable';
-      isClickable = false;
-      statusText = 'Unavailable Day';
-    }
-    else {
-      dayClass += ' available';
-      isClickable = true;
-      statusText = 'Available';
-    }
-    
-    if (isClickable) {
-      dayClass += ' clickable';
-    }
-    
-    calendarHTML += `<div class="${dayClass}" ${isClickable ? `onclick="selectDate('${dateString}')"` : ''} title="${statusText}">${day}</div>`;
-  }
-  
-  calendarHTML += '</div>';
-  
-  calendarGrid.innerHTML = calendarHTML;
-  
-  console.log('✅ Calendar rendered');
+  // Enable next button
+  document.getElementById('nextToStep2').disabled = false;
 }
+
+function updateConfirmationDetails() {
+  // Get form data
+  const formData = new FormData(document.getElementById('bookingForm'));
+  const dateInput = document.getElementById('bookingDate');
+  
+  // Update confirmation displays
+  if (dateInput.value) {
+    const date = new Date(dateInput.value);
+    const formattedDate = date.toLocaleDateString('en-US', { 
+      weekday: 'long', 
+      year: 'numeric', 
+      month: 'long', 
+      day: 'numeric' 
+    });
+    document.getElementById('confirmDate').textContent = formattedDate;
+  }
+  
+  const startTime = document.querySelector('input[name="startTime"]').value;
+  const endTime = document.querySelector('input[name="endTime"]').value;
+  if (startTime) {
+    const timeDisplay = endTime ? `${formatTime(startTime)} - ${formatTime(endTime)}` : formatTime(startTime);
+    document.getElementById('confirmTime').textContent = timeDisplay;
+  }
+  
+  const firstName = formData.get('firstName');
+  const lastName = formData.get('lastName');
+  if (firstName && lastName) {
+    document.getElementById('confirmName').textContent = `${firstName} ${lastName}`;
+  }
+  
+  const email = formData.get('email');
+  if (email) {
+    document.getElementById('confirmEmail').textContent = email;
+  }
+  
+  const phone = formData.get('phone');
+  if (phone) {
+    document.getElementById('confirmPhone').textContent = phone;
+  }
+}
+
+// Calendar functions removed - now using Flatpickr library
 
 function showTimeRanges(timeRanges) {
   const timeRangesContainer = document.getElementById('timeRanges');
@@ -656,13 +981,24 @@ function showTimeRanges(timeRanges) {
   let timeRangesHTML = '';
   
   if (isTimeRanges) {
-    // Handle time ranges
-    timeRangesHTML = timeRanges.map(range => {
+    // Handle time ranges using index-based approach
+    timeRangesHTML = timeRanges.map((range, index) => {
       const formattedRange = formatTimeRange(range);
+      
+      // Get the selected date for conflict checking
+      const selectedDate = document.getElementById('bookingDate').value;
+      const dateStr = selectedDate;
+      const isBooked = isTimeSlotBooked(dateStr, range.start, range.end);
+      const disabledClass = isBooked ? 'disabled' : '';
+      const disabledAttr = isBooked ? 'disabled' : '';
+      const bookedText = isBooked ? ' (FULLY BOOKED)' : '';
+      
+      console.log(`🔍 Time range ${formattedRange}: booked=${isBooked}`);
+      
       return `
-        <label class="time-range" onclick="selectTimeRange('${JSON.stringify(range)}')">
-          <input type="radio" name="timeRange" value="${JSON.stringify(range)}" required>
-          <span class="time-range-text">${formattedRange}</span>
+        <label class="time-range ${disabledClass}">
+          <input type="radio" name="timeRange" value="${index}" required ${disabledAttr}>
+          <span class="time-range-text">${formattedRange}${bookedText}</span>
         </label>
       `;
     }).join('');
@@ -670,10 +1006,21 @@ function showTimeRanges(timeRanges) {
     // Handle individual time slots (fallback)
     timeRangesHTML = timeRanges.map(timeSlot => {
       const formattedTime = formatTime(timeSlot);
+      
+      // Get the selected date for conflict checking
+      const selectedDate = document.getElementById('bookingDate').value;
+      const dateStr = selectedDate;
+      const isBooked = isTimeSlotBooked(dateStr, timeSlot, '');
+      const disabledClass = isBooked ? 'disabled' : '';
+      const disabledAttr = isBooked ? 'disabled' : '';
+      const bookedText = isBooked ? ' (FULLY BOOKED)' : '';
+      
+      console.log(`🔍 Time slot ${formattedTime}: booked=${isBooked}`);
+      
       return `
-        <label class="time-range" onclick="selectTimeRange('${timeSlot}')">
-          <input type="radio" name="timeRange" value="${timeSlot}" required>
-          <span class="time-range-text">${formattedTime}</span>
+        <label class="time-range ${disabledClass}">
+          <input type="radio" name="timeRange" value="${timeSlot}" required ${disabledAttr}>
+          <span class="time-range-text">${formattedTime}${bookedText}</span>
         </label>
       `;
     }).join('');
@@ -686,26 +1033,67 @@ function showTimeRanges(timeRanges) {
     ${timeRangesHTML}
   `;
 
-  // Enable book button when time range is selected
-  const timeRangeInputs = document.querySelectorAll('input[name="timeRange"]');
+  // Enable next button when time range is selected
+  const timeRangeInputs = document.querySelectorAll('input[name="timeRange"]:not([disabled])');
   timeRangeInputs.forEach(input => {
     input.addEventListener('change', function() {
-      document.querySelector('.book-button').disabled = false;
+      console.log('🔍 Time range input changed:', this.value);
       
       // Set start and end times based on selection
       if (isTimeRanges) {
-        const range = JSON.parse(this.value);
+        // Use the index to get the actual range object
+        const rangeIndex = parseInt(this.value);
+        const range = timeRanges[rangeIndex];
+        console.log('🔍 Selected range by index:', rangeIndex, range);
+        
+        if (range) {
         document.querySelector('input[name="startTime"]').value = range.start;
         document.querySelector('input[name="endTime"]').value = range.end;
+          console.log('🔍 Set start time:', range.start, 'end time:', range.end);
+          
+          // Update time display
+          updateTimeDisplay(formatTimeRange(range));
+        } else {
+          console.error('❌ Range not found for index:', rangeIndex);
+        }
       } else {
         // For individual time slots, set start time only
         document.querySelector('input[name="startTime"]').value = this.value;
         document.querySelector('input[name="endTime"]').value = '';
+        console.log('🔍 Set start time for slot:', this.value);
+        
+        // Update time display
+        updateTimeDisplay(formatTime(this.value));
       }
       
       console.log('🔍 Time range selected:', this.value);
+      console.log('🔍 Start time set to:', document.querySelector('input[name="startTime"]').value);
     });
   });
+}
+
+function formatTime(timeString) {
+  const [hours, minutes] = timeString.split(':');
+  const hour = parseInt(hours);
+  const ampm = hour >= 12 ? 'PM' : 'AM';
+  const displayHour = hour % 12 || 12;
+  return `${displayHour}:${minutes} ${ampm}`;
+}
+
+function formatTimeRange(range) {
+  const formatTime = (timeStr) => {
+    const [hours, minutes] = timeStr.split(':');
+    const hour = parseInt(hours);
+    const ampm = hour >= 12 ? 'PM' : 'AM';
+    const displayHour = hour % 12 || 12;
+    return `${displayHour}:${minutes} ${ampm}`;
+  };
+  
+  const duration = Math.floor(range.duration / 60);
+  const durationMinutes = range.duration % 60;
+  const durationStr = durationMinutes > 0 ? `${duration}h ${durationMinutes}m` : `${duration}h`;
+  
+  return `${formatTime(range.start)} - ${formatTime(range.end)} (${durationStr})`;
 }
 
 function updateTotalPrice() {
@@ -749,8 +1137,170 @@ function showSuccessMessage(bookingData) {
   document.getElementById('bookingForm').style.display = 'none';
 }
 
+function showBookingReadyMessage(booking) {
+  const messageDiv = document.getElementById('bookingMessage');
+  messageDiv.innerHTML = `
+    <div class="booking-ready-message">
+      <h3>✅ Booking Ready!</h3>
+      <p>Your booking details have been saved. You can now add this item to your cart and proceed to checkout.</p>
+      <div class="booking-summary">
+        <p><strong>Date:</strong> ${new Date(booking.bookingDate).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
+        <p><strong>Time:</strong> ${formatTime(booking.startTime)} - ${formatTime(booking.endTime)}</p>
+        <p><strong>Total:</strong> $${booking.totalPrice.toFixed(2)}</p>
+      </div>
+      <div class="booking-actions">
+        <button onclick="enableAddToCart()" class="enable-cart-btn">
+          🛒 Enable Add to Cart
+        </button>
+        <button onclick="location.reload()" class="cancel-btn">
+          Start Over
+        </button>
+      </div>
+    </div>
+  `;
+  messageDiv.style.display = 'block';
+  document.getElementById('bookingForm').style.display = 'none';
+}
+
+function storeBookingDataForCart(booking) {
+  // Store booking data in localStorage for Add to Cart
+  const bookingData = {
+    bookingId: booking.id,
+    date: booking.bookingDate,
+    startTime: booking.startTime,
+    endTime: booking.endTime,
+    totalPrice: booking.totalPrice,
+    selectedServices: booking.selectedServices,
+    specialRequests: booking.specialRequests || '',
+    customerInfo: {
+      firstName: booking.user.firstName,
+      lastName: booking.user.lastName,
+      email: booking.user.email,
+      phone: booking.user.phone
+    }
+  };
+  
+  localStorage.setItem('bookingData', JSON.stringify(bookingData));
+  console.log('✅ Booking data stored for cart:', bookingData);
+}
+
+function enableAddToCart() {
+  // Enable the Add to Cart button
+  const addToCartBtn = document.querySelector('form[action="/cart/add"] button[type="submit"], .btn--add-to-cart, [name="add"]');
+  
+  if (addToCartBtn) {
+    addToCartBtn.disabled = false;
+    addToCartBtn.style.opacity = '1';
+    addToCartBtn.style.cursor = 'pointer';
+    
+    // Add booking data to the form
+    addBookingDataToCartForm();
+    
+    console.log('✅ Add to Cart button enabled');
+    
+    // Show success message
+    const messageDiv = document.getElementById('bookingMessage');
+    messageDiv.innerHTML = `
+      <div class="cart-enabled-message">
+        <h3>🛒 Ready to Add to Cart!</h3>
+        <p>Your booking details are ready. Click "Add to Cart" to proceed to checkout.</p>
+        <div class="booking-summary">
+          <p><strong>Date:</strong> ${new Date(JSON.parse(localStorage.getItem('bookingData')).date).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
+          <p><strong>Time:</strong> ${JSON.parse(localStorage.getItem('bookingData')).startTime} - ${JSON.parse(localStorage.getItem('bookingData')).endTime}</p>
+          <p><strong>Total:</strong> $${JSON.parse(localStorage.getItem('bookingData')).totalPrice.toFixed(2)}</p>
+        </div>
+      </div>
+    `;
+  } else {
+    console.error('❌ Add to Cart button not found');
+    alert('Add to Cart button not found. Please refresh the page and try again.');
+  }
+}
+
+function addBookingDataToCartForm() {
+  const bookingData = JSON.parse(localStorage.getItem('bookingData'));
+  if (!bookingData) return;
+  
+  // Find the cart form
+  const cartForm = document.querySelector('form[action="/cart/add"]');
+  if (!cartForm) return;
+  
+  // Add booking data as hidden fields
+  const fields = [
+    { name: 'properties[Booking Date]', value: new Date(bookingData.date).toLocaleDateString() },
+    { name: 'properties[Booking Time]', value: `${bookingData.startTime} - ${bookingData.endTime}` },
+    { name: 'properties[Customer Name]', value: `${bookingData.customerInfo.firstName} ${bookingData.customerInfo.lastName}` },
+    { name: 'properties[Customer Email]', value: bookingData.customerInfo.email },
+    { name: 'properties[Customer Phone]', value: bookingData.customerInfo.phone },
+    { name: 'properties[Special Requests]', value: bookingData.specialRequests },
+    { name: 'properties[Booking ID]', value: bookingData.bookingId },
+    { name: 'properties[Total Price]', value: `$${bookingData.totalPrice.toFixed(2)}` }
+  ];
+  
+  // Add selected services
+  if (bookingData.selectedServices) {
+    try {
+      const services = JSON.parse(bookingData.selectedServices);
+      if (Array.isArray(services) && services.length > 0) {
+        fields.push({
+          name: 'properties[Selected Services]',
+          value: services.map(s => `${s.name} ($${s.price})`).join(', ')
+        });
+      }
+    } catch (e) {
+      console.error('Error parsing selected services:', e);
+    }
+  }
+  
+  // Remove existing booking properties
+  fields.forEach(field => {
+    const existingField = cartForm.querySelector(`input[name="${field.name}"]`);
+    if (existingField) {
+      existingField.remove();
+    }
+  });
+  
+  // Add new booking properties
+  fields.forEach(field => {
+    const input = document.createElement('input');
+    input.type = 'hidden';
+    input.name = field.name;
+    input.value = field.value;
+    cartForm.appendChild(input);
+  });
+  
+  console.log('✅ Booking data added to cart form');
+}
+
+function disableAddToCartButton() {
+  // Find and disable the Add to Cart button
+  const addToCartBtn = document.querySelector('form[action="/cart/add"] button[type="submit"], .btn--add-to-cart, [name="add"]');
+  
+  if (addToCartBtn) {
+    addToCartBtn.disabled = true;
+    addToCartBtn.style.opacity = '0.5';
+    addToCartBtn.style.cursor = 'not-allowed';
+    
+    // Add a tooltip or message
+    addToCartBtn.title = 'Please fill out the booking form first';
+    
+    console.log('✅ Add to Cart button disabled');
+  } else {
+    console.log('⚠️ Add to Cart button not found - may not be on this page');
+  }
+}
+
 function showErrorMessage(message) {
   const messageDiv = document.getElementById('bookingMessage');
+  
+  // Check if the element exists before proceeding
+  if (!messageDiv) {
+    console.error('❌ bookingMessage element not found, cannot show error message');
+    // Fallback: show alert
+    alert(`Booking Error: ${message}`);
+    return;
+  }
+  
   messageDiv.innerHTML = `
         <div class="error-message">
           <h3>❌ Booking Failed</h3>
@@ -778,17 +1328,70 @@ function showNoBookingMessage(message) {
 }
 
 // Load booking config when page loads
-document.addEventListener('DOMContentLoaded', function() {
-  loadBookingConfig();
+document.addEventListener('DOMContentLoaded', async function() {
+  console.log('🔍 DOM loaded, initializing booking widget...');
+  console.log('🔍 Current URL:', window.location.href);
+  console.log('🔍 Product ID:', '{{ product.id }}');
+  
+  try {
+    // Load Flatpickr first
+    console.log('🔍 Step 1: Loading Flatpickr...');
+    await loadFlatpickr();
+    console.log('✅ Flatpickr loaded successfully');
+    
+    // Disable Add to Cart button initially
+    console.log('🔍 Step 2: Disabling Add to Cart button...');
+    disableAddToCartButton();
+    console.log('✅ Add to Cart button disabled');
+    
+    // Load existing bookings to prevent conflicts
+    console.log('🔍 Step 3: Loading existing bookings...');
+    await loadExistingBookings();
+    console.log('✅ Existing bookings loaded');
+    
+    // Then load booking configuration
+    console.log('🔍 Step 3: Loading booking configuration...');
+    await loadBookingConfig();
+    console.log('✅ Booking configuration loaded');
+    
+    // Set up calendar after config is loaded and HTML is created
+    if (window.bookingConfig) {
+      console.log('🔍 Setting up calendar with full config');
+      // The calendar will be set up in showBookingWidget function
+    } else {
+      console.log('🔍 No config available, setting up basic calendar');
+      // Wait a bit for any dynamic content to load
+      setTimeout(() => {
+        setupBasicCalendar();
+      }, 100);
+    }
+    
+    console.log('✅ Booking widget initialization completed');
+  } catch (error) {
+    console.error('❌ Error during initialization:', error);
+    console.error('❌ Error stack:', error.stack);
+    showErrorMessage(`Initialization failed: ${error.message}`);
+  }
 });
 </script>
 
 <style>
 /* Simple Booking Widget Styles */
 .simple-booking-widget {
-  max-width: 800px;
+  max-width: 600px;
   margin: 20px auto;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+.loading-spinner {
+  font-size: 24px;
+  animation: spin 1s linear infinite;
+  margin-bottom: 10px;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
 }
 
 .booking-container {
@@ -799,7 +1402,7 @@ document.addEventListener('DOMContentLoaded', function() {
   }
 
   .booking-header {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: linear-gradient(1deg, #f38820 0%, #753192 100%);
     color: white;
   padding: 30px;
   text-align: center;
@@ -821,84 +1424,6 @@ document.addEventListener('DOMContentLoaded', function() {
   margin: 10px 0 0 0;
   font-size: 20px;
   font-weight: 600;
-}
-
-/* Progress Steps */
-.progress-steps {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  padding: 20px;
-  background: #f8fafc;
-  border-bottom: 1px solid #e2e8f0;
-}
-
-.step {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  margin: 0 20px;
-  opacity: 0.5;
-  transition: all 0.3s ease;
-}
-
-.step.active {
-  opacity: 1;
-}
-
-.step-number {
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  background: #e2e8f0;
-  color: #718096;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 700;
-  font-size: 16px;
-  margin-bottom: 8px;
-  transition: all 0.3s ease;
-}
-
-.step.active .step-number {
-  background: #667eea;
-  color: white;
-}
-
-.step-label {
-  font-size: 14px;
-  font-weight: 600;
-  color: #4a5568;
-  text-align: center;
-}
-
-/* Booking Steps */
-.booking-step {
-  min-height: 500px;
-}
-
-.step-content {
-  padding: 30px;
-}
-
-.step-content h3 {
-  margin: 0 0 30px 0;
-  font-size: 24px;
-  color: #2d3748;
-  text-align: center;
-}
-
-.step-content h4 {
-  margin: 0 0 15px 0;
-  font-size: 18px;
-  color: #4a5568;
-}
-
-.step-content h5 {
-  margin: 0 0 10px 0;
-  font-size: 16px;
-  color: #718096;
 }
 
 /* Admin Configuration Display */
@@ -986,7 +1511,7 @@ document.addEventListener('DOMContentLoaded', function() {
 }
 
 .booking-form {
-  padding: 30px;
+  padding: 0px 20px;
 }
 
 .form-section {
@@ -1031,7 +1556,7 @@ input[type="date"] {
 
 input[type="date"]:focus {
   outline: none;
-  border-color: #667eea;
+  border-color: #f38820;
 }
 
 .help-text {
@@ -1040,265 +1565,399 @@ input[type="date"]:focus {
   color: #666;
 }
 
-/* Calendar Styles */
-.calendar-container {
-    background: white;
-    border-radius: 12px;
-  padding: 20px;
-  margin-bottom: 20px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-  }
-
-  .calendar-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-  margin-bottom: 20px;
-  }
-
-  .nav-button {
-    background: #667eea;
-    color: white;
-    border: none;
-  width: 40px;
-  height: 40px;
-    border-radius: 50%;
-    cursor: pointer;
-  font-size: 18px;
-    font-weight: bold;
-    transition: all 0.2s ease;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-
-  .nav-button:hover {
-    background: #5a67d8;
-    transform: scale(1.1);
-  }
-
-  .month-year {
-  font-size: 18px;
-    font-weight: 700;
-  color: #2d3748;
-    margin: 0;
-  }
-
-  .calendar-grid {
-    display: grid;
-    grid-template-columns: repeat(7, 1fr);
-    gap: 8px;
-  }
-
-  .calendar-weekdays {
-    display: contents;
-  }
-
-  .calendar-weekdays span {
-    text-align: center;
-    font-weight: 700;
-    color: #718096;
-    padding: 12px 4px;
-    font-size: 14px;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-  }
-
-  .calendar-days {
-    display: contents;
-  }
-
-  .calendar-day {
-    aspect-ratio: 1;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border: 2px solid transparent;
-    border-radius: 8px;
-    font-size: 16px;
-    font-weight: 600;
-    transition: all 0.2s ease;
-    cursor: default;
-    background: #f7fafc;
-    color: #4a5568;
-  }
-
-  .calendar-day.clickable {
-    cursor: pointer;
-    background: #edf2f7;
-    border-color: #e2e8f0;
-  }
-
-  .calendar-day.clickable:hover {
-    background: #667eea;
-    color: white;
-    border-color: #667eea;
-    transform: scale(1.05);
-  }
-
-  .calendar-day.available {
-    background: linear-gradient(135deg, #48bb78 0%, #38a169 100%);
-    border-color: #38a169;
-    color: white;
-    font-weight: 700;
-  }
-
-  .calendar-day.unavailable {
-    background: #e2e8f0;
-    border-color: #cbd5e0;
-    color: #a0aec0;
-    cursor: not-allowed;
-    opacity: 0.6;
-  }
-
-  .calendar-day.past {
-    background: #f7fafc;
-    border-color: #e2e8f0;
-    color: #a0aec0;
-    cursor: not-allowed;
-    opacity: 0.5;
-  }
-
-  .calendar-day.outside-range {
-    background: #fef5e7;
-    border-color: #f6e05e;
-    color: #b7791f;
-    cursor: not-allowed;
-    opacity: 0.7;
-  }
-
-.calendar-day.empty {
-  background: transparent;
-  border: none;
-  cursor: default;
+/* Tabbed Interface Styles */
+.progress-tabs {
+  display: flex;
+  justify-content: space-between;
+  margin: 30px 0;
+  padding: 0 20px;
 }
 
-/* Selection Summary */
-.selection-summary {
-  background: linear-gradient(135deg, #48bb78 0%, #38a169 100%);
-  color: white;
-  padding: 25px;
+.tab {
+    display: flex;
+  flex-direction: column;
+    align-items: center;
+  padding: 15px 20px;
   border-radius: 12px;
-  margin-top: 30px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  background: #f8fafc;
+  border: 2px solid transparent;
+  min-width: 120px;
+}
+
+.tab.active {
+  background: linear-gradient(135deg, #f38820 0%, #753192 100%);
+    color: white;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 20px rgba(243, 136, 32, 0.3);
+}
+
+.tab-icon {
+  font-size: 24px;
+  margin-bottom: 8px;
+}
+
+.tab-text {
+  font-size: 14px;
+  font-weight: 600;
   text-align: center;
 }
 
-.selection-summary h4 {
-  margin: 0 0 20px 0;
-  font-size: 20px;
-  color: white;
+.tab-content {
+  min-height: 400px;
 }
 
-.selected-info {
+.tab-panel {
+  display: none;
+  animation: fadeIn 0.3s ease-in-out;
+}
+
+.tab-panel.active {
+  display: block;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.step-header {
+  text-align: center;
+  margin-bottom: 30px;
+}
+
+.step-header h3 {
+  font-size: 24px;
+  color: #2d3748;
+  margin-bottom: 10px;
+}
+
+.step-header p {
+  font-size: 16px;
+  color: #718096;
+}
+
+.selection-container {
+  margin-bottom: 40px;
+}
+
+.date-selection {
+  background: white;
+  padding: 20px;
+  border-radius: 12px;
+  border: 2px solid #e2e8f0;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  margin: 30px;
+}
+
+.time-selection-container {
+  margin-bottom: 30px;
+}
+
+.time-selection {
+  background: white;
+  padding: 20px;
+  border-radius: 12px;
+  border: 2px solid #e2e8f0;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  margin:0px 30px;
+}
+
+.date-selection h4, .time-selection h4 {
+  font-size: 17px;
+  color: #2d3748;
+  margin-bottom: 20px;
+    display: flex;
+    align-items: center;
+  gap: 10px;
+}
+
+.available-days-info {
+  margin-top: 20px;
+}
+
+.available-days-info p {
+  font-size: 16px;
+  color: #718096;
+  margin-bottom: 15px;
+}
+
+.available-days {
   display: flex;
-  justify-content: space-around;
-  margin-bottom: 25px;
+  flex-wrap: wrap;
+  gap: 12px;
 }
 
-.selected-item {
+.day-badge {
+  background: #e6fffa;
+  color: #234e52;
+  padding: 8px 16px;
+  border-radius: 20px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.step-summary {
+  background: linear-gradient(135deg, #48bb78 0%, #38a169 100%);
+  color: white;
+  padding: 20px;
+  border-radius: 12px;
+  margin-bottom: 20px;
+}
+
+.step-summary h4 {
+  margin-bottom: 15px;
+  font-size: 18px;
+  }
+
+.selection-details {
+    display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 15px;
+}
+
+.detail-item {
   display: flex;
   flex-direction: column;
-  align-items: center;
+  gap: 5px;
 }
 
-.selected-item .label {
-  font-size: 14px;
+.detail-item .label {
+    font-size: 14px;
   opacity: 0.9;
-  margin-bottom: 5px;
-}
+  }
 
-.selected-item .value {
-  font-size: 18px;
-  font-weight: 700;
-}
+.detail-item .value {
+  font-size: 16px;
+  font-weight: 600;
+  }
 
-.next-step-btn {
-  background: white;
-  color: #48bb78;
-  border: none;
-  padding: 15px 30px;
-  border-radius: 8px;
-  font-size: 18px;
-  font-weight: 700;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-}
-
-.next-step-btn:hover:not(:disabled) {
-  transform: translateY(-2px);
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
-}
-
-.next-step-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-  transform: none;
-}
-
-/* Form Actions */
-.form-actions {
-  display: flex;
+.step-actions {
+    display: flex;
   justify-content: space-between;
-  align-items: center;
+    align-items: center;
   margin-top: 30px;
-  gap: 20px;
+  margin-bottom:30px;
+  justify-content:center;
+}
+
+.next-btn, .back-btn, .confirm-btn {
+  padding: 15px 30px;
+  border: none;
+    border-radius: 8px;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+  transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.next-btn {
+  background: linear-gradient(135deg, #f38820 0%, #753192 100%);
+    color: white;
+}
+
+.next-btn:disabled {
+  background: #a0aec0;
+  cursor: not-allowed;
 }
 
 .back-btn {
-  background: #e2e8f0;
+  background: #f7fafc;
   color: #4a5568;
-  border: none;
-  padding: 12px 24px;
+  border: 2px solid #e2e8f0;
+}
+
+.confirm-btn {
+    background: linear-gradient(135deg, #48bb78 0%, #38a169 100%);
+    color: white;
+  font-size: 18px;
+  padding: 18px 35px;
+}
+
+.next-btn:hover:not(:disabled), .confirm-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+}
+
+.back-btn:hover {
+  background: #edf2f7;
+    border-color: #cbd5e0;
+}
+
+/* Form Styles */
+.input-group {
+  margin-bottom: 20px;
+}
+
+.input-group label {
+  display: block;
+  font-size: 14px;
+  font-weight: 600;
+  color: #2d3748;
+  margin-bottom: 8px;
+}
+
+.input-group input, .input-group textarea {
+  width: 100%;
+  padding: 12px;
+  border: 2px solid #e2e8f0;
   border-radius: 8px;
   font-size: 16px;
-  font-weight: 600;
+  transition: border-color 0.2s ease;
+}
+
+.input-group input:focus, .input-group textarea:focus {
+  outline: none;
+  border-color: #f38820;
+}
+
+.services-list {
+  display: grid;
+  gap: 15px;
+}
+
+.service-item {
+  display: flex;
+  align-items: center;
+  padding: 15px;
+  border: 2px solid #e2e8f0;
+  border-radius: 8px;
   cursor: pointer;
   transition: all 0.2s ease;
 }
 
-.back-btn:hover {
-  background: #cbd5e0;
-  transform: translateY(-1px);
+.service-item:hover {
+  border-color: #f38820;
+  background: #f8fafc;
 }
 
-.book-button {
-  background: linear-gradient(135deg, #48bb78 0%, #38a169 100%);
-  color: white;
-  border: none;
-  padding: 15px 30px;
-  border-radius: 8px;
+.service-item input[type="checkbox"] {
+  width: auto;
+  margin-right: 15px;
+  transform: scale(1.2);
+}
+
+.service-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+}
+
+.service-name {
+  font-weight: 600;
+  color: #2d3748;
+}
+
+.service-price {
+  color: #48bb78;
+  font-weight: 600;
+}
+
+/* Confirmation Styles */
+.confirmation-summary {
+  background: white;
+  border-radius: 12px;
+  padding: 25px;
+  border: 2px solid #e2e8f0;
+  margin-bottom: 30px;
+}
+
+.summary-section {
+  margin-bottom: 25px;
+}
+
+.summary-section:last-child {
+  margin-bottom: 0;
+}
+
+.summary-section h4 {
   font-size: 18px;
-  font-weight: 700;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  flex: 1;
+  color: #2d3748;
+  margin-bottom: 15px;
+  padding-bottom: 10px;
+  border-bottom: 2px solid #e2e8f0;
 }
 
-.book-button:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 20px rgba(72, 187, 120, 0.3);
+.summary-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0;
 }
 
-/* Loading Message */
-.loading-message {
-  text-align: center;
-  padding: 40px;
+.summary-item .label {
+  font-weight: 600;
   color: #4a5568;
 }
 
-.loading-message h3 {
-  margin: 0 0 15px 0;
-  font-size: 24px;
-  color: #667eea;
+.summary-item .value {
+  color: #2d3748;
 }
+
+.price-breakdown {
+  background: #f8fafc;
+  padding: 20px;
+  border-radius: 8px;
+}
+
+.price-item {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.price-divider {
+  height: 1px;
+  background: #e2e8f0;
+  margin: 15px 0;
+}
+
+.price-total {
+  display: flex;
+  justify-content: space-between;
+  font-size: 18px;
+  font-weight: 700;
+  color: #2d3748;
+}
+
+/* Date Picker Styles */
+.date-picker-container {
+  margin-bottom: 25px;
+}
+
+.date-picker-container input {
+  width: 100%;
+  padding: 16px;
+  border: 2px solid #e1e5e9;
+  border-radius: 8px;
+  font-size: 16px;
+  background: white;
+  cursor: pointer;
+  transition: border-color 0.2s ease;
+}
+
+.date-picker-container input:focus {
+  outline: none;
+  border-color: #f38820;
+}
+
+.date-picker-container input:hover {
+  border-color: #f38820;
+}
+
+/* Old calendar styles removed - now using Flatpickr */
 
 .time-ranges-header {
   margin-bottom: 15px;
   padding: 10px;
   background: #f0f8ff;
   border-radius: 8px;
-  border-left: 4px solid #667eea;
+  border-left: 4px solid #f38820;
 }
 
 .time-ranges-header p {
@@ -1309,9 +1968,9 @@ input[type="date"]:focus {
 
 .time-ranges {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 10px;
-  margin-bottom: 15px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 15px;
+  margin-bottom: 20px;
 }
 
 .time-range {
@@ -1325,35 +1984,90 @@ input[type="date"]:focus {
 
 .time-range-text {
   display: block;
-  padding: 15px;
+  padding: 18px;
   border: 2px solid #e1e5e9;
   border-radius: 8px;
   text-align: center;
   font-weight: 600;
   transition: all 0.2s ease;
   background: white;
-  font-size: 16px;
+  font-size: 18px;
 }
 
 .time-range input[type="radio"]:checked + .time-range-text {
-  background: #667eea;
+  background: #f38820;
   color: white;
-  border-color: #667eea;
+  border-color: #f38820;
 }
 
 .time-range-text:hover {
-  border-color: #667eea;
+  border-color: #f38820;
+}
+
+.time-range.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background: #f5f5f5;
+  border-color: #ddd;
+}
+
+.time-range.disabled .time-range-text {
+  color: #999;
+  text-decoration: line-through;
+}
+
+.time-range.disabled input[type="radio"] {
+  cursor: not-allowed;
 }
 
 .no-time-message {
     text-align: center;
   color: #666;
   font-style: italic;
-  padding: 20px;
+  padding: 10px;
   background: #f6f6f7;
     border-radius: 8px;
   border: 2px dashed #e1e5e9;
   }
+
+.error-container, .no-booking-container {
+  text-align: center;
+  padding: 40px 20px;
+  background: #fff;
+  border-radius: 12px;
+  border: 2px solid #e1e5e9;
+  margin: 20px 0;
+}
+
+.error-icon, .no-booking-icon {
+  font-size: 48px;
+  margin-bottom: 20px;
+}
+
+.error-container h3, .no-booking-container h3 {
+  color: #d32f2f;
+  margin-bottom: 15px;
+}
+
+.error-container p, .no-booking-container p {
+  color: #666;
+  margin-bottom: 20px;
+}
+
+.retry-button {
+  background: #007bff;
+  color: white;
+  border: none;
+  padding: 12px 24px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 16px;
+  transition: background-color 0.3s;
+}
+
+.retry-button:hover {
+  background: #0056b3;
+}
 
   .services-list {
     display: flex;
@@ -1373,11 +2087,11 @@ input[type="date"]:focus {
 }
 
 .service-item:hover {
-    border-color: #667eea;
+    border-color: #f38820;
   }
 
 .service-item input[type="checkbox"]:checked + .service-name {
-  color: #667eea;
+  color: #f38820;
   font-weight: 600;
   }
 
@@ -1428,7 +2142,7 @@ textarea {
 
 textarea:focus {
   outline: none;
-  border-color: #667eea;
+  border-color: #f38820;
 }
 
 .book-button {
@@ -1465,6 +2179,176 @@ textarea:focus {
     color: #48bb78;
   }
 
+  .booking-ready-message {
+    background: #d1ecf1;
+    border: 1px solid #bee5eb;
+    color: #0c5460;
+    padding: 20px;
+    border-radius: 8px;
+    text-align: center;
+  }
+
+  .booking-ready-message h3 {
+    margin: 0 0 10px 0;
+    color: #0c5460;
+  }
+
+  .cart-enabled-message {
+    background: #d4edda;
+    border: 1px solid #c3e6cb;
+    color: #155724;
+    padding: 20px;
+    border-radius: 8px;
+    text-align: center;
+  }
+
+  .cart-enabled-message h3 {
+    margin: 0 0 10px 0;
+    color: #155724;
+  }
+
+  .booking-actions {
+    margin-top: 20px;
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+
+  .enable-cart-btn {
+    background: #007bff;
+    color: white;
+    border: none;
+    padding: 12px 24px;
+    border-radius: 6px;
+    font-size: 16px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: background-color 0.3s;
+  }
+
+  .enable-cart-btn:hover {
+    background: #0056b3;
+  }
+
+/* Service Buttons */
+.services-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 15px;
+  margin-top: 15px;
+}
+
+.service-button {
+  position: relative;
+  background: #f38820;
+  color: white;
+  border: 2px solid #f38820;
+  border-radius: 12px;
+  padding: 20px 15px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  text-align: center;
+  min-height: 80px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  font-family: inherit;
+}
+
+.service-button:hover {
+  background: #e67e17;
+  border-color: #e67e17;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(243, 136, 32, 0.3);
+}
+
+.service-button.selected {
+  background: #27ae60;
+  border-color: #27ae60;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(39, 174, 96, 0.3);
+}
+
+.service-button.selected:hover {
+  background: #229954;
+  border-color: #229954;
+}
+
+.service-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+}
+
+.service-name {
+  font-weight: bold;
+  font-size: 14px;
+  line-height: 1.2;
+  text-align: center;
+}
+
+.service-price {
+  font-size: 16px;
+  font-weight: bold;
+  opacity: 0.9;
+}
+
+.service-selected-indicator {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 50%;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.service-button.selected .service-selected-indicator {
+  opacity: 1;
+}
+
+/* Mobile Responsive for Services */
+@media (max-width: 768px) {
+  .services-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+  }
+  
+  .service-button {
+    padding: 15px 10px;
+    min-height: 70px;
+  }
+  
+  .service-name {
+    font-size: 13px;
+  }
+  
+  .service-price {
+    font-size: 14px;
+  }
+}
+
+@media (max-width: 480px) {
+  .services-grid {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+  
+  .service-button {
+    padding: 15px;
+    min-height: 60px;
+  }
+}
+
 .error-message {
   text-align: center;
     color: #e53e3e;
@@ -1483,7 +2367,7 @@ textarea:focus {
   }
 
 .retry-button {
-    background: #667eea;
+    background: #f38820;
     color: white;
     border: none;
     padding: 12px 24px;
@@ -1523,8 +2407,78 @@ textarea:focus {
       grid-template-columns: 1fr;
     }
 
-  .time-slots {
-    grid-template-columns: repeat(auto-fit, minmax(80px, 1fr));
+  .selection-container {
+    grid-template-columns: 1fr;
+    gap: 20px;
+  }
+
+  .progress-tabs {
+    flex-direction: column;
+    gap: 10px;
+    padding: 0 10px;
+  }
+
+  .tab {
+    min-width: auto;
+    padding: 12px 15px;
+  }
+
+  .tab-icon {
+    font-size: 20px;
+  }
+
+  .tab-text {
+    font-size: 12px;
+  }
+
+  .step-actions {
+    flex-direction: column;
+    gap: 15px;
+  }
+
+  .next-btn, .back-btn, .confirm-btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .date-picker-container input {
+    font-size: 14px;
+    padding: 10px;
+  }
+
+  .time-ranges {
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    }
+
+  .step-header h3 {
+    font-size: 20px;
+  }
+
+  .step-header p {
+    font-size: 14px;
+  }
+
+  .confirmation-summary {
+    padding: 20px;
+  }
+
+  .summary-section h4 {
+    font-size: 16px;
+  }
+
+  .date-selection, .time-selection {
+    padding: 20px;
+    margin-bottom: 25px;
+  }
+
+  .date-picker-container input {
+    font-size: 16px;
+    padding: 14px;
+  }
+
+  .time-ranges {
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 12px;
     }
   }
 </style>

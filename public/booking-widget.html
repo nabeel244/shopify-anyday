@@ -609,9 +609,17 @@
                     totalPrice: productData.price
                 };
 
+                // Validate required fields
+                if (!bookingData.startTime) {
+                    showMessage('❌ Please select a time slot', 'error');
+                    return;
+                }
+
                 // Calculate end time
                 const endTime = calculateEndTime(bookingData.startTime, 480);
                 bookingData.endTime = endTime;
+                
+                console.log('🔍 Booking data being sent:', bookingData);
 
                 const response = await fetch('/api/bookings', {
                     method: 'POST',

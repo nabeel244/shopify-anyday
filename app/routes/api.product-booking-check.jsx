@@ -3,6 +3,28 @@ import { PrismaClient } from "@prisma/client";
 
 const prisma = new PrismaClient();
 
+// CORS headers helper
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, ngrok-skip-browser-warning'
+};
+
+export async function action({ request }) {
+  // Handle preflight OPTIONS requests
+  if (request.method === 'OPTIONS') {
+    return new Response(null, {
+      status: 200,
+      headers: corsHeaders
+    });
+  }
+  
+  return json({ error: 'Method not allowed' }, { 
+    status: 405,
+    headers: corsHeaders
+  });
+}
+
 function generateTimeSlotsFromRange(startTime, endTime, slotDuration) {
   const slots = [];
   const [startHour, startMinute] = startTime.split(':').map(Number);
@@ -27,7 +49,10 @@ export async function loader({ request }) {
     const productId = url.searchParams.get('productId');
 
     if (!productId) {
-      return json({ error: 'Product ID is required' }, { status: 400 });
+      return json({ error: 'Product ID is required' }, { 
+        status: 400,
+        headers: corsHeaders
+      });
     }
 
     // Handle both formats: just the ID number or full Shopify GraphQL ID
@@ -51,6 +76,8 @@ export async function loader({ request }) {
       return json({ 
         hasBooking: false,
         message: 'Booking not enabled for this product'
+      }, {
+        headers: corsHeaders
       });
     }
 
@@ -92,9 +119,14 @@ export async function loader({ request }) {
         bookingStartDate: configuration.bookingStartDate,
         bookingEndDate: configuration.bookingEndDate
       }
+    }, {
+      headers: corsHeaders
     });
   } catch (error) {
     console.error('Failed to check product booking configuration:', error);
-    return json({ error: 'Failed to check configuration' }, { status: 500 });
+    return json({ error: 'Failed to check configuration' }, { 
+      status: 500,
+      headers: corsHeaders
+    });
   }
 }

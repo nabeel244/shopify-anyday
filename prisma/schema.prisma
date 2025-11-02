@@ -75,12 +75,17 @@ model Booking {
   userId                 String
   serviceId              String?
   productBookingConfigId String?
+  selectedServices       String?  // JSON array of selected services with prices
   bookingDate            DateTime
   startTime              String
   endTime                String
   specialRequests        String?
   totalPrice             Float
   status                 BookingStatus @default(PENDING)
+  paymentStatus          PaymentStatus @default(PENDING)
+  shopifyOrderId         String?  // Shopify order ID after payment
+  shopifyCheckoutUrl     String?  // Shopify checkout URL
+  isTemporary            Boolean  @default(false) // Flag for payment-first approach
   createdAt              DateTime @default(now())
   updatedAt              DateTime @updatedAt
 
@@ -98,6 +103,7 @@ model GoogleSheetConfig {
   spreadsheetId String
   sheetName     String
   credentials   String   // JSON string of Google service account credentials
+  isActive      Boolean  @default(true)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
@@ -128,7 +134,16 @@ model Session {
 // Enums
 enum BookingStatus {
   PENDING
+  PAYMENT_PENDING  // New status for payment-first approach
   CONFIRMED
   CANCELLED
   COMPLETED
+}
+
+enum PaymentStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  REFUNDED
 }

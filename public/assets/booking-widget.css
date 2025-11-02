@@ -16,7 +16,7 @@
 }
 
 .booking-header {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, #f38820 0%, #753192 100%);
   color: white;
   padding: 20px;
   text-align: center;
@@ -101,8 +101,8 @@ input, select, textarea {
 
 input:focus, select:focus, textarea:focus {
   outline: none;
-  border-color: #667eea;
-  box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.2);
+  border-color: #f38820;
+  box-shadow: 0 0 0 2px rgba(243, 136, 32, 0.2);
 }
 
 .error {
@@ -113,7 +113,7 @@ input:focus, select:focus, textarea:focus {
 
 .booking-button {
   width: 100%;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, #f38820 0%, #753192 100%);
   color: white;
   border: none;
   padding: 15px;

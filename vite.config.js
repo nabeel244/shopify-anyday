@@ -29,7 +29,7 @@ let hmrConfig = {
 
 export default defineConfig({
   server: {
-    allowedHosts: [host, "e8aa19ec7ecb.ngrok-free.app", "*.ngrok-free.app", "*.ngrok.io"],
+    allowedHosts: [host, "2d65d8470472.ngrok-free.app", "*.ngrok-free.app", "*.ngrok.io"],
     cors: {
       preflightContinue: true,
     },

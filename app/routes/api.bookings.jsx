@@ -5,9 +5,31 @@ import { emailService } from "../services/email.server.js";
 
 const prisma = new PrismaClient();
 
+// CORS headers helper
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, POST, PATCH, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, ngrok-skip-browser-warning'
+};
+
 export async function action({ request }) {
+  // Handle preflight OPTIONS requests
+  if (request.method === 'OPTIONS') {
+    return new Response(null, {
+      status: 200,
+      headers: corsHeaders
+    });
+  }
+  
+  if (request.method === 'PATCH') {
+    return handleBookingUpdate(request);
+  }
+  
   if (request.method !== 'POST') {
-    return json({ error: 'Method not allowed' }, { status: 405 });
+    return json({ error: 'Method not allowed' }, { 
+      status: 405,
+      headers: corsHeaders
+    });
   }
 
   try {
@@ -26,10 +48,13 @@ export async function action({ request }) {
     }
 
     // Validate required fields
-    const requiredFields = ['firstName', 'lastName', 'email', 'phone', 'productId', 'productTitle', 'bookingDate', 'startTime', 'endTime'];
+    const requiredFields = ['firstName', 'lastName', 'email', 'phone', 'productId', 'productTitle', 'bookingDate', 'startTime', 'endTime', 'totalPrice'];
     for (const field of requiredFields) {
       if (!data[field]) {
-        return json({ error: `${field} is required` }, { status: 400 });
+            return json({ error: `${field} is required` }, { 
+              status: 400,
+              headers: corsHeaders
+            });
       }
     }
 
@@ -38,6 +63,11 @@ export async function action({ request }) {
       ...data,
       selectedServices: data.selectedServices || []
     });
+    
+    // Debug specific fields
+    console.log('🔍 bookingDate value:', data.bookingDate);
+    console.log('🔍 bookingDate type:', typeof data.bookingDate);
+    console.log('🔍 bookingDate truthy:', !!data.bookingDate);
 
     // Check if user already exists, if not create them
     let user = await prisma.user.findUnique({
@@ -65,20 +95,26 @@ export async function action({ request }) {
       });
     }
 
-    // Create booking with product booking configuration
-    const bookingCreateData = {
+    // Instead of creating a booking immediately, we'll create a temporary booking request
+    // that will be converted to a real booking only after successful payment
+    
+    // Create a temporary booking request (this will be stored temporarily)
+    const bookingRequestData = {
       userId: user.id,
       bookingDate: new Date(data.bookingDate),
       startTime: data.startTime,
       endTime: data.endTime,
       specialRequests: data.specialRequests || null,
       totalPrice: data.totalPrice,
-      status: 'PENDING'
+      status: 'PAYMENT_PENDING', // New status for payment-first approach
+      paymentStatus: 'PENDING',
+      selectedServices: data.selectedServices ? (Array.isArray(data.selectedServices) ? JSON.stringify(data.selectedServices) : data.selectedServices) : null,
+      isTemporary: true // Flag to identify temporary bookings
     };
 
     // Add product booking configuration if provided
     if (data.productBookingConfigId) {
-      bookingCreateData.productBookingConfigId = data.productBookingConfigId;
+      bookingRequestData.productBookingConfigId = data.productBookingConfigId;
     } else {
       // Fallback: create or get service based on product
       let service = await prisma.service.findFirst({
@@ -95,12 +131,12 @@ export async function action({ request }) {
           }
         });
       }
-      bookingCreateData.serviceId = service.id;
+      bookingRequestData.serviceId = service.id;
     }
 
-    // Create booking
-    const booking = await prisma.booking.create({
-      data: bookingCreateData,
+    // Create temporary booking request
+    const bookingRequest = await prisma.booking.create({
+      data: bookingRequestData,
       include: {
         user: true,
         service: true,
@@ -108,44 +144,23 @@ export async function action({ request }) {
       }
     });
 
-    // Update booking status to CONFIRMED
-    const confirmedBooking = await prisma.booking.update({
-      where: { id: booking.id },
-      data: { status: 'CONFIRMED' },
-      include: {
-        user: true,
-        service: true,
-        productBookingConfig: true
-      }
-    });
-
-    // Sync to Google Sheets (if configured)
-    try {
-      const sheetsService = new GoogleSheetsService('default-shop'); // You might want to get this from session
-      await sheetsService.initialize();
-      await sheetsService.addBooking(confirmedBooking);
-    } catch (sheetsError) {
-      console.error('Failed to sync to Google Sheets:', sheetsError);
-      // Don't fail the booking if Google Sheets sync fails
-    }
-
-    // Send confirmation emails
-    try {
-      // Send email to company (you might want to get this from shop settings)
-      const companyEmail = process.env.COMPANY_EMAIL || 'admin@example.com';
-      await emailService.sendBookingConfirmation(confirmedBooking, companyEmail);
-      
-      // Send confirmation email to customer
-      await emailService.sendCustomerConfirmation(confirmedBooking);
-    } catch (emailError) {
-      console.error('Failed to send confirmation emails:', emailError);
-      // Don't fail the booking if email sending fails
-    }
+    console.log('⏳ TEMPORARY BOOKING REQUEST CREATED - PAYMENT REQUIRED:');
+    console.log(`   Customer: ${bookingRequest.user.firstName} ${bookingRequest.user.lastName}`);
+    console.log(`   Date: ${bookingRequest.bookingDate.toDateString()}`);
+    console.log(`   Time: ${bookingRequest.startTime} - ${bookingRequest.endTime}`);
+    console.log(`   Service: ${bookingRequest.service?.name || bookingRequest.productBookingConfig?.productTitle}`);
+    console.log(`   Total Price: $${bookingRequest.totalPrice}`);
+    console.log(`   Booking ID: ${bookingRequest.id}`);
+    console.log(`   Status: ${bookingRequest.status}`);
 
     return json({ 
       success: true, 
-      booking: confirmedBooking,
-      message: 'Booking confirmed successfully! You will receive a confirmation email shortly.'
+      booking: bookingRequest,
+      message: 'Booking request created! Please complete payment to confirm your booking.',
+      requiresPayment: true,
+      checkoutRequired: true
+    }, {
+      headers: corsHeaders
     });
 
   } catch (error) {
@@ -158,7 +173,93 @@ export async function action({ request }) {
     return json({ 
       error: 'Failed to create booking',
       details: error.message 
-    }, { status: 500 });
+    }, { 
+      status: 500,
+      headers: corsHeaders
+    });
+  }
+}
+
+async function handleBookingUpdate(request) {
+  try {
+    const { id, status } = await request.json();
+
+    if (!id || !status) {
+      return json({ error: 'Booking ID and status are required' }, { 
+        status: 400,
+        headers: corsHeaders
+      });
+    }
+
+    // Get the booking with all related data
+    const booking = await prisma.booking.findUnique({
+      where: { id },
+      include: {
+        user: true,
+        service: true,
+        productBookingConfig: true
+      }
+    });
+
+    if (!booking) {
+      return json({ error: 'Booking not found' }, { 
+        status: 404,
+        headers: corsHeaders
+      });
+    }
+
+    // Update the booking status
+    const updatedBooking = await prisma.booking.update({
+      where: { id },
+      data: { status },
+      include: {
+        user: true,
+        service: true,
+        productBookingConfig: true
+      }
+    });
+
+    // If booking is being cancelled, send cancellation email
+    if (status === 'CANCELLED' && booking.status !== 'CANCELLED') {
+      try {
+        await emailService.sendBookingCancellation(booking, 'Cancelled by admin');
+        console.log('✅ Cancellation email sent for booking:', id);
+      } catch (emailError) {
+        console.error('❌ Failed to send cancellation email:', emailError);
+      }
+    }
+
+    // Update Google Sheets if booking is cancelled
+    if (status === 'CANCELLED') {
+      try {
+        const sheetsService = new GoogleSheetsService('default-shop');
+        await sheetsService.initialize();
+        await sheetsService.updateBookingStatus(id, 'CANCELLED');
+        console.log('✅ Updated Google Sheets for cancelled booking:', id);
+      } catch (sheetsError) {
+        console.error('❌ Failed to update Google Sheets:', sheetsError);
+      }
+    }
+
+    console.log('✅ Booking status updated:', id, 'to', status);
+
+    return json({ 
+      success: true, 
+      booking: updatedBooking,
+      message: `Booking status updated to ${status}` 
+    }, {
+      headers: corsHeaders
+    });
+
+  } catch (error) {
+    console.error('Failed to update booking:', error);
+    return json({ 
+      error: 'Failed to update booking',
+      details: error.message 
+    }, { 
+      status: 500,
+      headers: corsHeaders
+    });
   }
 }
 
@@ -177,7 +278,10 @@ export async function loader({ request }) {
     }
 
     const bookings = await prisma.booking.findMany({
-      where: whereClause,
+      where: {
+        ...whereClause,
+        isTemporary: false // Only show confirmed bookings (non-temporary)
+      },
       include: {
         user: true,
         service: true
@@ -185,9 +289,14 @@ export async function loader({ request }) {
       orderBy: { bookingDate: 'desc' }
     });
 
-    return json({ bookings });
+    return json({ bookings }, {
+      headers: corsHeaders
+    });
   } catch (error) {
     console.error('Failed to fetch bookings:', error);
-    return json({ error: 'Failed to fetch bookings' }, { status: 500 });
+    return json({ error: 'Failed to fetch bookings' }, { 
+      status: 500,
+      headers: corsHeaders
+    });
   }
 }

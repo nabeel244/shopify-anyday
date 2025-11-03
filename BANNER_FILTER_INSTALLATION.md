@@ -40,7 +40,7 @@ Add it after the CSS styles and before the banner div:
 {%- comment -%} ADD THIS LINE {%- endcomment -%}
 {% render 'home-filter-bar' %}
 
-<div id="Banner-{{ section.id }}" class="banner...">
+<div id="Banner-{{ section.id }}" class="banner..."a>
   ...
 </div>
 ```

@@ -30,7 +30,7 @@ model Service {
   name        String
   description String?
   price       Float
-  duration    Int      // Duration in minutes
+  duration    Int // Duration in minutes
   isActive    Boolean  @default(true)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -42,27 +42,27 @@ model Service {
 }
 
 model ProductBookingConfig {
-  id              String   @id @default(cuid())
-  productId       String   @unique
-  productTitle    String
-  productPrice    Float
-  productRating   Float?   // Product rating (1-5 stars)
-  city            String?  // City where service is available
-  availableDays   String   // JSON array of days ["monday", "tuesday", etc.]
-  timeSlots       String?  // JSON array of specific time slots (legacy - will be deprecated)
-  timeRanges      String?  // JSON array of time ranges [{"start": "10:00", "end": "12:00", "duration": 120}]
-  timeRangeStart  String?  // e.g., "09:00" (legacy)
-  timeRangeEnd    String?  // e.g., "17:00" (legacy)
-  slotDuration    Int?     // Duration in minutes (legacy)
-  disabledDates   String?  // JSON array of disabled dates
-  services        String?  // JSON array of available services with prices
-  duration        Int      @default(480) // Default 8 hours in minutes
-  maxBookings     Int      @default(1)
+  id               String   @id @default(cuid())
+  productId        String   @unique
+  productTitle     String
+  productPrice     Float
+  productRating    Float? // Product rating (1-5 stars)
+  city             String? // City where service is available
+  availableDays    String // JSON array of days ["monday", "tuesday", etc.]
+  timeSlots        String? // JSON array of specific time slots (legacy - will be deprecated)
+  timeRanges       String? // JSON array of time ranges [{"start": "10:00", "end": "12:00", "duration": 120}]
+  timeRangeStart   String? // e.g., "09:00" (legacy)
+  timeRangeEnd     String? // e.g., "17:00" (legacy)
+  slotDuration     Int? // Duration in minutes (legacy)
+  disabledDates    String? // JSON array of disabled dates
+  services         String? // JSON array of available services with prices
+  duration         Int      @default(480) // Default 8 hours in minutes
+  maxBookings      Int      @default(1)
   bookingStartDate String? // Start date for booking availability (YYYY-MM-DD)
   bookingEndDate   String? // End date for booking availability (YYYY-MM-DD)
-  isActive        Boolean  @default(true)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  isActive         Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
   // Relations
   bookings Booking[]
@@ -71,11 +71,11 @@ model ProductBookingConfig {
 }
 
 model Booking {
-  id                     String   @id @default(cuid())
+  id                     String        @id @default(cuid())
   userId                 String
   serviceId              String?
   productBookingConfigId String?
-  selectedServices       String?  // JSON array of selected services with prices
+  selectedServices       String? // JSON array of selected services with prices
   bookingDate            DateTime
   startTime              String
   endTime                String
@@ -83,15 +83,15 @@ model Booking {
   totalPrice             Float
   status                 BookingStatus @default(PENDING)
   paymentStatus          PaymentStatus @default(PENDING)
-  shopifyOrderId         String?  // Shopify order ID after payment
-  shopifyCheckoutUrl     String?  // Shopify checkout URL
-  isTemporary            Boolean  @default(false) // Flag for payment-first approach
-  createdAt              DateTime @default(now())
-  updatedAt              DateTime @updatedAt
+  shopifyOrderId         String? // Shopify order ID after payment
+  shopifyCheckoutUrl     String? // Shopify checkout URL
+  isTemporary            Boolean       @default(false) // Flag for payment-first approach
+  createdAt              DateTime      @default(now())
+  updatedAt              DateTime      @updatedAt
 
   // Relations
-  user                 User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
-  service              Service?             @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+  user                 User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  service              Service?              @relation(fields: [serviceId], references: [id], onDelete: SetNull)
   productBookingConfig ProductBookingConfig? @relation(fields: [productBookingConfigId], references: [id], onDelete: SetNull)
 
   @@map("bookings")
@@ -99,14 +99,16 @@ model Booking {
 
 model GoogleSheetConfig {
   id            String   @id @default(cuid())
-  shopDomain    String   @unique
-  spreadsheetId String
-  sheetName     String
-  credentials   String   // JSON string of Google service account credentials
+  shopDomain    String // Shop domain (can be shared across locations)
+  location      String // City/Location name (e.g., "Tbilisi", "Batumi")
+  spreadsheetId String // Google Spreadsheet ID for this location
+  sheetName     String // Sheet name within the spreadsheet
+  credentials   String // JSON string of Google service account credentials
   isActive      Boolean  @default(true)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
+  @@unique([shopDomain, location]) // One sheet config per shopDomain + location combination
   @@map("google_sheet_configs")
 }
 
@@ -134,7 +136,7 @@ model Session {
 // Enums
 enum BookingStatus {
   PENDING
-  PAYMENT_PENDING  // New status for payment-first approach
+  PAYMENT_PENDING // New status for payment-first approach
   CONFIRMED
   CANCELLED
   COMPLETED

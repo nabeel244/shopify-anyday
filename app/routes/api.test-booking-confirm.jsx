@@ -1,37 +1,46 @@
 import { json } from "@remix-run/node";
 import { PrismaClient } from "@prisma/client";
-import { emailService } from "../services/email.server.js";
 import { GoogleSheetsService } from "../services/googleSheets.server.js";
+import { emailService } from "../services/email.server.js";
 
 const prisma = new PrismaClient();
 
+// CORS headers helper
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type'
+};
+
+/**
+ * TEST ENDPOINT: Manually confirm a booking (bypasses payment)
+ * Usage: POST /api/test-booking-confirm with { bookingId: "..." }
+ * This is useful for testing Google Sheets sync without going through payment
+ */
 export async function action({ request }) {
+  if (request.method === 'OPTIONS') {
+    return new Response(null, {
+      status: 200,
+      headers: corsHeaders
+    });
+  }
+
   if (request.method !== 'POST') {
-    return json({ error: 'Method not allowed' }, { status: 405 });
+    return json({ error: 'Method not allowed' }, { 
+      status: 405,
+      headers: corsHeaders
+    });
   }
 
   try {
-    const webhookData = await request.json();
-    
-    console.log('🔍 Order webhook received:', webhookData);
-
-    // Check if this is a paid order
-    if (webhookData.financial_status !== 'paid') {
-      console.log('⚠️ Order not paid yet, skipping booking confirmation');
-      return json({ success: true, message: 'Order not paid yet' });
-    }
-
-    // Look for booking ID in order properties
-    const bookingId = webhookData.line_items?.find(item => 
-      item.properties?.find(prop => prop.name === 'Booking ID')
-    )?.properties?.find(prop => prop.name === 'Booking ID')?.value;
+    const { bookingId } = await request.json();
 
     if (!bookingId) {
-      console.log('⚠️ No booking ID found in order properties');
-      return json({ success: true, message: 'No booking ID found' });
+      return json({ error: 'Booking ID is required' }, { 
+        status: 400,
+        headers: corsHeaders
+      });
     }
-
-    console.log('🔍 Found booking ID:', bookingId);
 
     // Get the booking
     const booking = await prisma.booking.findUnique({
@@ -44,18 +53,19 @@ export async function action({ request }) {
     });
 
     if (!booking) {
-      console.error('❌ Booking not found:', bookingId);
-      return json({ error: 'Booking not found' }, { status: 404 });
+      return json({ error: 'Booking not found' }, { 
+        status: 404,
+        headers: corsHeaders
+      });
     }
 
-    // Update booking to confirmed
+    // Update booking to confirmed (bypass payment)
     const updatedBooking = await prisma.booking.update({
       where: { id: bookingId },
       data: {
         paymentStatus: 'COMPLETED',
         status: 'CONFIRMED',
-        shopifyOrderId: webhookData.id?.toString(),
-        isTemporary: false // Convert from temporary to permanent booking
+        isTemporary: false
       },
       include: {
         user: true,
@@ -64,15 +74,12 @@ export async function action({ request }) {
       }
     });
 
-    console.log('✅ BOOKING CONFIRMED AFTER PAYMENT:');
+    console.log('🧪 TEST MODE: Booking manually confirmed:', bookingId);
     console.log(`   Customer: ${updatedBooking.user.firstName} ${updatedBooking.user.lastName}`);
     console.log(`   Date: ${updatedBooking.bookingDate.toDateString()}`);
     console.log(`   Time: ${updatedBooking.startTime} - ${updatedBooking.endTime}`);
-    console.log(`   Service: ${updatedBooking.service?.name || updatedBooking.productBookingConfig?.productTitle}`);
-    console.log(`   Total Price: $${updatedBooking.totalPrice}`);
-    console.log(`   Shopify Order ID: ${webhookData.id}`);
 
-    // Sync to Google Sheets - Use location from productBookingConfig
+    // Sync to Google Sheets
     try {
       const location = updatedBooking.productBookingConfig?.city || 'default';
       const sheetsService = new GoogleSheetsService('default-shop', location);
@@ -83,7 +90,7 @@ export async function action({ request }) {
       console.error('❌ Failed to sync to Google Sheets:', sheetsError);
     }
 
-    // Send confirmation emails
+    // Send confirmation emails (optional for testing)
     try {
       const companyEmail = process.env.COMPANY_EMAIL || 'admin@example.com';
       await emailService.sendBookingConfirmation(updatedBooking, companyEmail);
@@ -95,15 +102,21 @@ export async function action({ request }) {
 
     return json({
       success: true,
-      message: 'Booking confirmed successfully',
-      bookingId: bookingId
+      message: 'Booking confirmed and synced to Google Sheets (Test mode)',
+      booking: updatedBooking
+    }, {
+      headers: corsHeaders
     });
 
   } catch (error) {
-    console.error('❌ Order webhook error:', error);
+    console.error('Failed to confirm booking:', error);
     return json({ 
-      error: 'Webhook processing failed',
+      error: 'Failed to confirm booking',
       details: error.message 
-    }, { status: 500 });
+    }, { 
+      status: 500,
+      headers: corsHeaders
+    });
   }
 }
+

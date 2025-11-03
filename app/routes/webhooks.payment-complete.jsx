@@ -71,12 +71,13 @@ export async function action({ request }) {
       console.log(`   Total Price: $${updatedBooking.totalPrice}`);
       console.log(`   Shopify Order ID: ${shopifyOrderId}`);
 
-      // Sync to Google Sheets
+      // Sync to Google Sheets - Use location from productBookingConfig
       try {
-        const sheetsService = new GoogleSheetsService('default-shop');
+        const location = updatedBooking.productBookingConfig?.city || 'default';
+        const sheetsService = new GoogleSheetsService('default-shop', location);
         await sheetsService.initialize();
         await sheetsService.addBooking(updatedBooking);
-        console.log('✅ Synced to Google Sheets');
+        console.log(`✅ Synced to Google Sheets for location: ${location}`);
       } catch (sheetsError) {
         console.error('❌ Failed to sync to Google Sheets:', sheetsError);
       }

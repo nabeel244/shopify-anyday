@@ -51,13 +51,14 @@ export async function loader({ request }) {
     console.log('🔍 Product Booking Config ID:', productBookingConfigId);
 
     // Get existing bookings for the selected date
+    // Only count active bookings (exclude CANCELLED and COMPLETED)
     const whereClause = {
       bookingDate: {
         gte: startOfDay,
         lte: endOfDay
       },
       status: {
-        in: ['PENDING', 'CONFIRMED']
+        in: ['PENDING', 'CONFIRMED', 'PAYMENT_PENDING']
       }
     };
 

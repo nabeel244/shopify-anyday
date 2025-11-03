@@ -4,8 +4,9 @@ import { PrismaClient } from '@prisma/client';
 const prisma = new PrismaClient();
 
 export class GoogleSheetsService {
-  constructor(shopDomain) {
+  constructor(shopDomain, location = null) {
     this.shopDomain = shopDomain;
+    this.location = location;
     this.auth = null;
     this.sheets = null;
     this.spreadsheetId = null;
@@ -14,12 +15,41 @@ export class GoogleSheetsService {
 
   async initialize() {
     try {
-      const config = await prisma.googleSheetConfig.findUnique({
-        where: { shopDomain: this.shopDomain }
-      });
+      // If location is provided, find config by shopDomain + location
+      // Otherwise, try to find by shopDomain only (for backward compatibility)
+      let config;
+      
+      if (this.location) {
+        config = await prisma.googleSheetConfig.findUnique({
+          where: {
+            shopDomain_location: {
+              shopDomain: this.shopDomain,
+              location: this.location
+            }
+          }
+        });
+        
+        // If not found by location, try to find default config for shopDomain
+        if (!config) {
+          config = await prisma.googleSheetConfig.findFirst({
+            where: {
+              shopDomain: this.shopDomain,
+              isActive: true
+            }
+          });
+        }
+      } else {
+        // Backward compatibility: find first active config for shopDomain
+        config = await prisma.googleSheetConfig.findFirst({
+          where: {
+            shopDomain: this.shopDomain,
+            isActive: true
+          }
+        });
+      }
 
       if (!config || !config.isActive) {
-        console.log('Google Sheets configuration not found or inactive for:', this.shopDomain);
+        console.log('Google Sheets configuration not found or inactive for:', this.shopDomain, this.location ? `location: ${this.location}` : '');
         return false;
       }
 
@@ -34,6 +64,7 @@ export class GoogleSheetsService {
       this.spreadsheetId = config.spreadsheetId;
       this.sheetName = config.sheetName;
 
+      console.log(`✅ Google Sheets initialized for ${this.shopDomain}${this.location ? ` - Location: ${this.location}` : ''}`);
       return true;
     } catch (error) {
       console.error('Failed to initialize Google Sheets service:', error);
@@ -98,12 +129,20 @@ export class GoogleSheetsService {
 
   async addBooking(bookingData) {
     if (!this.sheets) {
+      console.log('📊 Google Sheets not initialized, attempting to initialize...');
       const initialized = await this.initialize();
       if (!initialized) {
-        console.log('Google Sheets not initialized, skipping addBooking');
-        return { success: false, message: 'Google Sheets not configured' };
+        console.error('❌ Google Sheets not initialized, skipping addBooking');
+        console.error(`   Shop Domain: ${this.shopDomain}`);
+        console.error(`   Location: ${this.location || 'not set'}`);
+        throw new Error('Google Sheets not configured for this location');
       }
     }
+
+    console.log(`📊 Adding booking to Google Sheets: ${bookingData.id}`);
+    console.log(`   Spreadsheet ID: ${this.spreadsheetId}`);
+    console.log(`   Sheet Name: ${this.sheetName}`);
+    console.log(`   Location: ${this.location || 'default'}`);
 
     try {
       const serviceName = bookingData.service?.name || bookingData.productBookingConfig?.productTitle || 'N/A';
@@ -127,6 +166,7 @@ export class GoogleSheetsService {
         ]
       ];
 
+      console.log(`📊 Appending booking row to sheet: ${this.sheetName}`);
       const response = await this.sheets.spreadsheets.values.append({
         spreadsheetId: this.spreadsheetId,
         range: `${this.sheetName}!A:M`,
@@ -134,10 +174,17 @@ export class GoogleSheetsService {
         resource: { values }
       });
 
-      console.log('✅ Booking added to Google Sheets:', bookingData.id);
+      console.log('✅ Booking added to Google Sheets successfully:', bookingData.id);
+      console.log(`   Updated cells: ${response.data.updates?.updatedCells || 'N/A'}`);
+      console.log(`   Updated range: ${response.data.updates?.updatedRange || 'N/A'}`);
       return response.data;
     } catch (error) {
-      console.error('Failed to add booking to Google Sheets:', error);
+      console.error('❌ Failed to add booking to Google Sheets:', error);
+      console.error('   Error message:', error.message);
+      console.error('   Error code:', error.code);
+      if (error.response) {
+        console.error('   API Error:', error.response.data);
+      }
       throw error;
     }
   }
@@ -305,51 +352,84 @@ export class GoogleSheetsService {
 
       // Extract booking IDs from the sheet
       const sheetBookingIds = [];
+      console.log(`📊 Reading ${rows.length - 1} booking rows from sheet`);
+      
       for (let i = 1; i < rows.length; i++) {
         const bookingId = rows[i][bookingIdColumnIndex];
         const status = rows[i][statusColumnIndex];
         
         if (bookingId) {
+          // Normalize status (handle case variations, trim whitespace)
+          const normalizedStatus = status 
+            ? status.toString().trim().toUpperCase() 
+            : 'CONFIRMED';
+          
           sheetBookingIds.push({
-            id: bookingId,
-            status: status || 'CONFIRMED'
+            id: bookingId.toString().trim(), // Ensure ID is string and trimmed
+            status: normalizedStatus
           });
+          
+          // Log cancelled bookings found in sheet
+          if (normalizedStatus === 'CANCELLED') {
+            console.log(`   📋 Found CANCELLED booking in sheet: ${bookingId}`);
+          }
         }
       }
 
-      // Get all confirmed bookings from the database
-      const confirmedBookings = await prisma.booking.findMany({
+      console.log(`📊 Found ${sheetBookingIds.length} bookings in Google Sheet`);
+      console.log(`📊 Status column index: ${statusColumnIndex}`);
+
+      // Get all active bookings from the database (not already cancelled)
+      const activeBookings = await prisma.booking.findMany({
         where: {
           status: {
-            in: ['CONFIRMED', 'PAYMENT_PENDING']
-          },
-          paymentStatus: {
-            in: ['COMPLETED', 'PENDING']
+            in: ['CONFIRMED', 'PAYMENT_PENDING', 'PENDING']
           }
         },
         select: {
-          id: true
+          id: true,
+          status: true,
+          productBookingConfig: {
+            select: {
+              city: true
+            }
+          }
         }
       });
 
-      const dbBookingIds = new Set(confirmedBookings.map(b => b.id));
+      console.log(`📊 Found ${activeBookings.length} active bookings in database`);
 
-      // Find bookings that exist in DB but not in the sheet (likely deleted by manager)
-      const deletedInSheet = [];
+      // Find bookings that are cancelled in the sheet
+      const cancelledBookings = [];
       
-      // First, check if any bookings in DB have a row in the sheet
-      for (const dbBooking of confirmedBookings) {
-        const existsInSheet = sheetBookingIds.find(sb => sb.id === dbBooking.id);
+      // Check each active booking in database
+      for (const dbBooking of activeBookings) {
+        const sheetBooking = sheetBookingIds.find(sb => sb.id === dbBooking.id);
         
-        // If booking exists in DB but not in sheet (and not marked as cancelled in DB), mark as cancelled
-        // Also check if the status in the sheet is "CANCELLED"
-        if (existsInSheet && existsInSheet.status === 'CANCELLED') {
-          deletedInSheet.push(dbBooking.id);
+        // Case 1: Booking exists in sheet and status is "CANCELLED" (case-insensitive)
+        if (sheetBooking && sheetBooking.status === 'CANCELLED') {
+          console.log(`   ✓ Booking ${dbBooking.id} marked as CANCELLED in sheet`);
+          cancelledBookings.push(dbBooking.id);
+        }
+        // Case 2: Booking exists in DB but not in sheet (manager deleted the row)
+        // Only check this if booking should be in this location's sheet
+        else if (!sheetBooking) {
+          // Check if this booking belongs to this location
+          const bookingLocation = dbBooking.productBookingConfig?.city || 'default';
+          if (bookingLocation === this.location || (!this.location && bookingLocation === 'default')) {
+            console.log(`   ⚠️ Booking ${dbBooking.id} exists in DB but not found in sheet (possibly deleted)`);
+            // For safety, only mark as cancelled if explicitly set to CANCELLED
+            // Uncomment the next line if you want deleted rows to be cancelled automatically:
+            // cancelledBookings.push(dbBooking.id);
+          }
         }
       }
 
-      console.log('Found bookings cancelled in Google Sheets:', deletedInSheet.length);
-      return deletedInSheet;
+      console.log(`✅ Found ${cancelledBookings.length} bookings cancelled in Google Sheets (location: ${this.location || 'default'})`);
+      if (cancelledBookings.length > 0) {
+        console.log(`   Cancelled booking IDs:`, cancelledBookings);
+      }
+      return cancelledBookings;
 
     } catch (error) {
       console.error('Failed to sync from Google Sheets:', error);
@@ -400,18 +480,40 @@ export class GoogleSheetsService {
   }
 }
 
-export async function setupGoogleSheetsConfig(shopDomain, spreadsheetId, sheetName, credentials) {
+export async function setupGoogleSheetsConfig(shopDomain, spreadsheetId, sheetName, credentials, location = null) {
   try {
+    // Normalize location - if empty string or null, use 'default'
+    const normalizedLocation = (location && location.trim()) ? location.trim() : 'default';
+    
+    console.log('Setting up Google Sheets config:', {
+      shopDomain,
+      location: normalizedLocation,
+      spreadsheetId,
+      sheetName
+    });
+
+    // Create unique key for upsert
+    const uniqueKey = {
+      shopDomain_location: {
+        shopDomain,
+        location: normalizedLocation
+      }
+    };
+
+    console.log('Upsert key:', uniqueKey);
+
     const config = await prisma.googleSheetConfig.upsert({
-      where: { shopDomain },
+      where: uniqueKey,
       update: {
         spreadsheetId,
         sheetName,
         credentials: JSON.stringify(credentials),
+        location: normalizedLocation,
         isActive: true
       },
       create: {
         shopDomain,
+        location: normalizedLocation,
         spreadsheetId,
         sheetName,
         credentials: JSON.stringify(credentials),
@@ -419,14 +521,32 @@ export async function setupGoogleSheetsConfig(shopDomain, spreadsheetId, sheetNa
       }
     });
 
+    console.log('Google Sheets config saved:', config.id);
+
     // Setup initial headers
-    const sheetsService = new GoogleSheetsService(shopDomain);
-    await sheetsService.initialize();
-    await sheetsService.setupInitialHeaders();
+    try {
+      const sheetsService = new GoogleSheetsService(shopDomain, normalizedLocation);
+      const initialized = await sheetsService.initialize();
+      
+      if (initialized) {
+        await sheetsService.setupInitialHeaders();
+        console.log('Initial headers setup complete');
+      } else {
+        console.warn('Google Sheets service did not initialize - headers not set up');
+      }
+    } catch (headerError) {
+      console.error('Warning: Failed to setup headers (config saved anyway):', headerError);
+      // Don't throw - config is saved, headers can be set up later
+    }
 
     return true;
   } catch (error) {
     console.error('Failed to setup Google Sheets config:', error);
+    console.error('Error details:', {
+      message: error.message,
+      code: error.code,
+      meta: error.meta
+    });
     throw error;
   }
 }

@@ -95,6 +95,9 @@ export async function action({ request }) {
       });
     }
 
+    // Check if test mode is enabled (bypass payment for testing)
+    const BYPASS_PAYMENT = process.env.BYPASS_PAYMENT === 'true' || data.skipPayment === true;
+    
     // Instead of creating a booking immediately, we'll create a temporary booking request
     // that will be converted to a real booking only after successful payment
     
@@ -106,10 +109,10 @@ export async function action({ request }) {
       endTime: data.endTime,
       specialRequests: data.specialRequests || null,
       totalPrice: data.totalPrice,
-      status: 'PAYMENT_PENDING', // New status for payment-first approach
-      paymentStatus: 'PENDING',
+      status: BYPASS_PAYMENT ? 'CONFIRMED' : 'PAYMENT_PENDING', // Skip payment in test mode
+      paymentStatus: BYPASS_PAYMENT ? 'COMPLETED' : 'PENDING',
       selectedServices: data.selectedServices ? (Array.isArray(data.selectedServices) ? JSON.stringify(data.selectedServices) : data.selectedServices) : null,
-      isTemporary: true // Flag to identify temporary bookings
+      isTemporary: !BYPASS_PAYMENT // Only temporary if payment is required
     };
 
     // Add product booking configuration if provided
@@ -144,24 +147,85 @@ export async function action({ request }) {
       }
     });
 
-    console.log('⏳ TEMPORARY BOOKING REQUEST CREATED - PAYMENT REQUIRED:');
-    console.log(`   Customer: ${bookingRequest.user.firstName} ${bookingRequest.user.lastName}`);
-    console.log(`   Date: ${bookingRequest.bookingDate.toDateString()}`);
-    console.log(`   Time: ${bookingRequest.startTime} - ${bookingRequest.endTime}`);
-    console.log(`   Service: ${bookingRequest.service?.name || bookingRequest.productBookingConfig?.productTitle}`);
-    console.log(`   Total Price: $${bookingRequest.totalPrice}`);
-    console.log(`   Booking ID: ${bookingRequest.id}`);
-    console.log(`   Status: ${bookingRequest.status}`);
+    if (BYPASS_PAYMENT) {
+      // Test mode: Automatically confirm booking and sync to Google Sheets
+      console.log('🧪 TEST MODE: Booking auto-confirmed (payment bypassed)');
+      console.log(`   Customer: ${bookingRequest.user.firstName} ${bookingRequest.user.lastName}`);
+      console.log(`   Date: ${bookingRequest.bookingDate.toDateString()}`);
+      console.log(`   Time: ${bookingRequest.startTime} - ${bookingRequest.endTime}`);
+      console.log(`   Service: ${bookingRequest.service?.name || bookingRequest.productBookingConfig?.productTitle}`);
+      console.log(`   Total Price: $${bookingRequest.totalPrice}`);
+      console.log(`   Booking ID: ${bookingRequest.id}`);
 
-    return json({ 
-      success: true, 
-      booking: bookingRequest,
-      message: 'Booking request created! Please complete payment to confirm your booking.',
-      requiresPayment: true,
-      checkoutRequired: true
-    }, {
-      headers: corsHeaders
-    });
+      // Sync to Google Sheets immediately (for testing)
+      try {
+        const location = bookingRequest.productBookingConfig?.city || 'default';
+        console.log(`🔄 Attempting to sync to Google Sheets...`);
+        console.log(`   Location from productBookingConfig: ${bookingRequest.productBookingConfig?.city || 'NOT SET'}`);
+        console.log(`   Using location: ${location}`);
+        
+        const sheetsService = new GoogleSheetsService('default-shop', location);
+        const initialized = await sheetsService.initialize();
+        
+        if (!initialized) {
+          console.error('❌ Google Sheets service failed to initialize');
+          console.error('   Check if Google Sheets config exists for location:', location);
+          console.error('   Check if location matches the configured location in admin panel');
+          return json({ 
+            success: true, 
+            booking: bookingRequest,
+            message: 'Booking confirmed! (Test mode - payment bypassed) - Google Sheets sync failed',
+            warning: 'Google Sheets not configured or location mismatch',
+            requiresPayment: false,
+            checkoutRequired: false,
+            testMode: true
+          }, {
+            headers: corsHeaders
+          });
+        }
+        
+        console.log(`✅ Google Sheets service initialized successfully`);
+        await sheetsService.addBooking(bookingRequest);
+        console.log(`✅ Synced to Google Sheets for location: ${location}`);
+      } catch (sheetsError) {
+        console.error('❌ Failed to sync to Google Sheets:', sheetsError);
+        console.error('❌ Error details:', {
+          message: sheetsError.message,
+          stack: sheetsError.stack
+        });
+      }
+
+      return json({ 
+        success: true, 
+        booking: bookingRequest,
+        message: 'Booking confirmed! (Test mode - payment bypassed)',
+        requiresPayment: false,
+        checkoutRequired: false,
+        testMode: true
+      }, {
+        headers: corsHeaders
+      });
+    } else {
+      // Production mode: Require payment
+      console.log('⏳ TEMPORARY BOOKING REQUEST CREATED - PAYMENT REQUIRED:');
+      console.log(`   Customer: ${bookingRequest.user.firstName} ${bookingRequest.user.lastName}`);
+      console.log(`   Date: ${bookingRequest.bookingDate.toDateString()}`);
+      console.log(`   Time: ${bookingRequest.startTime} - ${bookingRequest.endTime}`);
+      console.log(`   Service: ${bookingRequest.service?.name || bookingRequest.productBookingConfig?.productTitle}`);
+      console.log(`   Total Price: $${bookingRequest.totalPrice}`);
+      console.log(`   Booking ID: ${bookingRequest.id}`);
+      console.log(`   Status: ${bookingRequest.status}`);
+
+      return json({ 
+        success: true, 
+        booking: bookingRequest,
+        message: 'Booking request created! Please complete payment to confirm your booking.',
+        requiresPayment: true,
+        checkoutRequired: true
+      }, {
+        headers: corsHeaders
+      });
+    }
 
   } catch (error) {
     console.error('Failed to create booking:', error);
@@ -232,10 +296,11 @@ async function handleBookingUpdate(request) {
     // Update Google Sheets if booking is cancelled
     if (status === 'CANCELLED') {
       try {
-        const sheetsService = new GoogleSheetsService('default-shop');
+        const location = booking.productBookingConfig?.city || 'default';
+        const sheetsService = new GoogleSheetsService('default-shop', location);
         await sheetsService.initialize();
         await sheetsService.updateBookingStatus(id, 'CANCELLED');
-        console.log('✅ Updated Google Sheets for cancelled booking:', id);
+        console.log(`✅ Updated Google Sheets for cancelled booking: ${id} (location: ${location})`);
       } catch (sheetsError) {
         console.error('❌ Failed to update Google Sheets:', sheetsError);
       }
